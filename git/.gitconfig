@@ -1,0 +1,93 @@
+[user]
+  name = Walter Rempening Diaz
+  email = walter.rempening@iosefin.com
+[core]
+  autocrlf = input
+  editor = nvim -f 
+[pull]
+  rebase = true
+	
+[mergetool "vimdiff"]
+  layout = "LOCAL,BASE,REMOTE / MERGED"
+	
+[filter "lfs"]
+  clean = git-lfs clean -- %f
+  smudge = git-lfs smudge -- %f
+  process = git-lfs filter-process
+  required = true
+
+[alias]
+  # logging
+  l = !git log --graph --oneline --tags $(git rev-parse --abbrev-ref HEAD)
+  ls = log --tags --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate
+  ll = log --tags --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
+  lnc = log --tags --pretty=format:"%h\\ %s\\ [%cn]"
+  ld = log --tags --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=relative
+  lds = log --tags --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=short
+  le = log --tags --oneline --decorate
+  filelog = log --tags -u
+  fl = log --tags -u
+  
+  # file diff
+  d = diff
+  ds = diff --stat
+  dl = "!git ll -1"
+  dc = diff --cached
+  dlc = diff --cached HEAD^
+  dr  = "!f() { git diff "$1"^.."$1"; }; f"
+  lc  = "!f() { git ll "$1"^.."$1"; }; f"
+  diff = diff --word-diff
+  diffr  = "!f() { git diff "$1"^.."$1"; }; f"
+  
+  # tags
+  lasttag = describe --tags --abbrev=0
+  lt = describe --tags --abbrev=0
+  
+  #Basics
+  cp = cherry-pick
+  c = commit --verbose
+  ca = commit -a --verbose
+  cm = commit -m
+  cam = commit -a -m
+  m = commit --amend --verbose
+  cl = clone
+  ci = commit
+  co = checkout
+  cob = checkout -b
+  a = add     
+  ap = add -p
+  s = status
+  pu = push
+  puo = push origin
+  puom = push origin master
+  pusu = push --set-upstream origin
+  puf = push --force-with-lease
+  pl = pull
+  plo = push origin 
+  plom = pull origin master
+  i = init && git add . && git commit -m "Initial commit"
+  rbi = rebase -i
+  rba = rebase --abort
+  rbc = rebase --continue
+  
+  # list branches sorted by last modified
+  b = "!git for-each-ref --sort='-authordate' --format='%(authordate)%09%(objectname:short)%09%(refname)' refs/heads | sed -e 's-refs/heads/--'"
+  br = branch
+  
+  # Reset
+  r = reset
+  r1 = reset HEAD^
+  r2 = reset HEAD^^
+  rh = reset --hard
+  rh1 = reset HEAD^ --hard
+  rh2 = reset HEAD^^ --hard
+  
+  # stash
+  sl = stash list
+  sa = stash apply
+  ss = stash save
+  
+  # list aliases
+  la = "!git config -l | grep alias | cut -c 7-"
+[init]
+  defaultBranch = main

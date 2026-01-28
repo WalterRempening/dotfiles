@@ -1,0 +1,8 @@
+title=""
+macos-titlebar-style=hidden
+theme=Material Design Colors
+font-family="MesloLGM Nerd Font Mono"
+font-size=15
+background-blur=90
+background-opacity=0.6
+keybind = shift+enter=text:\n

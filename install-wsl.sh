@@ -156,7 +156,7 @@ done
 cd "$DOTFILES_DIR"
 for pkg in "${STOW_PACKAGES[@]}"; do
   info "  stow $pkg"
-  stow -R "$pkg"
+  stow -t "$HOME" -R "$pkg"
 done
 
 ok "All packages stowed"

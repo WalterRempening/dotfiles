@@ -139,24 +139,21 @@ info "Stowing dotfiles..."
 
 STOW_PACKAGES=(zsh-wsl git starship tmux nvim mise)
 
-# Back up any existing configs that would conflict
-for pkg in "${STOW_PACKAGES[@]}"; do
-  case "$pkg" in
-    zsh-wsl)
-      for f in .zshrc .zprofile; do
-        if [ -f "$HOME/$f" ] && [ ! -L "$HOME/$f" ]; then
-          warn "Backing up existing ~/$f to ~/${f}.bak"
-          mv "$HOME/$f" "$HOME/${f}.bak"
-        fi
-      done
-      ;;
-  esac
+# Back up any existing non-symlink configs that would conflict
+BACKUP_FILES=(.zshrc .zprofile .gitconfig .tmux.conf .config/mise/config.toml .config/starship.toml .config/starship/config.toml)
+for f in "${BACKUP_FILES[@]}"; do
+  if [ -f "$HOME/$f" ] && [ ! -L "$HOME/$f" ]; then
+    warn "Backing up existing ~/$f to ~/${f}.bak"
+    mkdir -p "$(dirname "$HOME/${f}.bak")"
+    mv "$HOME/$f" "$HOME/${f}.bak"
+  fi
 done
 
 cd "$DOTFILES_DIR"
 for pkg in "${STOW_PACKAGES[@]}"; do
   info "  stow $pkg"
-  stow -t "$HOME" -R "$pkg"
+  # Filter non-fatal BUG warnings caused by WSL /mnt/c symlinks
+  stow -d "$DOTFILES_DIR" -t "$HOME" -R "$pkg" 2>&1 | grep -v "^BUG in find_stowed_path" || true
 done
 
 ok "All packages stowed"

@@ -47,8 +47,8 @@ sync_env() {
       if [ ! -f "$wt/$f" ]; then
         cp "$main_wt/$f" "$wt/$f"
         echo "    $wt_name: copied $f"
-        [[ "$f" == ".envrc" ]] && command -v direnv &>/dev/null && direnv allow "$wt" 2>/dev/null && echo "    $wt_name: direnv allow"
-        [[ "$f" == ".tool-versions" || "$f" == ".mise.toml" ]] && command -v mise &>/dev/null && (cd "$wt" && mise trust 2>/dev/null) && echo "    $wt_name: mise trust"
+        [[ "$f" == ".envrc" ]] && command -v direnv &>/dev/null && direnv allow "$wt" 2>/dev/null && echo "    $wt_name: direnv allow" || true
+        [[ "$f" == ".tool-versions" || "$f" == ".mise.toml" ]] && command -v mise &>/dev/null && (cd "$wt" && mise trust 2>/dev/null) && echo "    $wt_name: mise trust" || true
       fi
     done
   done <<< "$worktrees"

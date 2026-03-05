@@ -104,8 +104,8 @@ add-zsh-hook preexec _wakatime_heartbeat
 # Iosefin workspace management
 iosefin() {
   case "${1:-}" in
-    up)   ~/Dev/iosefin/iosefin-workspace.sh ;;
-    sync) ~/Dev/iosefin/iosefin-sync-worktrees.sh ;;
+    up)   ~/dotfiles/iosefin/iosefin-workspace.sh ;;
+    sync) ~/dotfiles/iosefin/iosefin-sync-worktrees.sh ;;
     *)    echo "Usage: iosefin {up|sync}" ;;
   esac
 }

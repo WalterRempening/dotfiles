@@ -152,6 +152,7 @@ step "Installing brew casks"
 CASKS=(
   aerospace
   affinity
+  appcleaner
   balenaetcher
   brave-browser
   dolphin
@@ -279,19 +280,12 @@ clone_repo "$IOSEFIN_DIR/menoserv/buakfieren-app"         "git@github.com:Walter
 clone_repo "$IOSEFIN_DIR/sbs/skola-api"                   "git@github.com:WalterRempening/skola-api.git"
 clone_repo "$IOSEFIN_DIR/sbs/skola-ui"                     "git@github.com:WalterRempening/skola-ui.git"
 
-# senova
+# eenova
 clone_repo "$IOSEFIN_DIR/senova/senova-pos"                "git@github.com:WalterRempening/senova-pos.git"
 
 # unecre
 clone_repo "$IOSEFIN_DIR/unecre/web_point_of_sale"         "git@github.com:Unecre-AC/web_point_of_sale.git"
 clone_repo "$IOSEFIN_DIR/unecre/api_point_of_sale"         "git@github.com:Unecre-AC/api_point_of_sale.git"
-
-# Copy iosefin scripts into place
-step "Installing iosefin workspace scripts"
-cp "$DOTFILES_DIR/iosefin/iosefin-lib.sh"            "$IOSEFIN_DIR/"
-cp "$DOTFILES_DIR/iosefin/iosefin-workspace.sh"      "$IOSEFIN_DIR/"
-cp "$DOTFILES_DIR/iosefin/iosefin-sync-worktrees.sh" "$IOSEFIN_DIR/"
-chmod +x "$IOSEFIN_DIR"/iosefin-*.sh
 
 # ---------------------------------------------------------------------------
 # Done

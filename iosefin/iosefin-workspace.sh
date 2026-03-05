@@ -9,6 +9,7 @@
 #   into a 3-pane window (left split: UI top / API bottom + right full)
 
 set -euo pipefail
+trap 'echo "ERROR at line $LINENO (exit $?)" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/iosefin-lib.sh"

@@ -60,3 +60,52 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 eval "$(direnv hook zsh)"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
 export PATH="/Library/TeX/texbin:$PATH"
+
+# WakaTime terminal tracking
+# Sends heartbeat on each command, using tmux session as project name
+_wakatime_heartbeat() {
+  # Only track if wakatime-cli exists
+  [[ -x "$HOME/.wakatime/wakatime-cli" ]] || return
+
+  local project="Terminal"
+  local entity="zsh"
+
+  # Use tmux session name as project if inside tmux
+  if [[ -n "$TMUX" ]]; then
+    project=$(tmux display-message -p '#S' 2>/dev/null || echo "Terminal")
+  fi
+
+  # Detect current foreground process for better categorization
+  local cmd="${1%% *}"  # First word of command
+  case "$cmd" in
+    claude)   entity="claude-code" ;;
+    opencode) entity="opencode" ;;
+    nvim|vim) entity="neovim" ;;
+    git|lgit) entity="git" ;;
+    lazygit)  entity="git" ;;
+    docker|lazydocker) entity="docker" ;;
+    *)        entity="terminal" ;;
+  esac
+
+  # Send heartbeat in background (non-blocking)
+  "$HOME/.wakatime/wakatime-cli" --write \
+    --plugin "zsh-wakatime/1.0.0" \
+    --entity-type app \
+    --entity "$entity" \
+    --project "$project" \
+    --language "Shell" \
+    &>/dev/null &!
+}
+
+# Hook into preexec (runs before each command)
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec _wakatime_heartbeat
+
+# Iosefin workspace management
+iosefin() {
+  case "${1:-}" in
+    up)   ~/Dev/iosefin/iosefin-workspace.sh ;;
+    sync) ~/Dev/iosefin/iosefin-sync-worktrees.sh ;;
+    *)    echo "Usage: iosefin {up|sync}" ;;
+  esac
+}

@@ -56,7 +56,7 @@ if [[ -d "$NVIM_BUILD_DIR" ]]; then
   git pull
 else
   mkdir -p "$(dirname "$NVIM_BUILD_DIR")"
-  git clone https://github.com/neovim/neovim.git "$NVIM_BUILD_DIR"
+  git clone --depth 1 https://github.com/neovim/neovim.git "$NVIM_BUILD_DIR"
   cd "$NVIM_BUILD_DIR"
 fi
 make CMAKE_BUILD_TYPE=RelWithDebInfo
@@ -73,7 +73,7 @@ if [[ -d "$TMUX_BUILD_DIR" ]]; then
   git pull
 else
   mkdir -p "$(dirname "$TMUX_BUILD_DIR")"
-  git clone https://github.com/tmux/tmux.git "$TMUX_BUILD_DIR"
+  git clone --depth 1 https://github.com/tmux/tmux.git "$TMUX_BUILD_DIR"
   cd "$TMUX_BUILD_DIR"
 fi
 sh autogen.sh

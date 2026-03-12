@@ -50,37 +50,45 @@ brew install cmake ninja gettext curl libtool automake pkg-config \
 # 4. Neovim from source (latest)
 # ---------------------------------------------------------------------------
 step "Building Neovim from source"
-NVIM_BUILD_DIR="$HOME/.local/src/neovim"
-if [[ -d "$NVIM_BUILD_DIR" ]]; then
-  cd "$NVIM_BUILD_DIR"
-  git pull
+if command -v nvim &>/dev/null; then
+  echo "Neovim already installed ($(nvim --version | head -1)). Skipping."
 else
-  mkdir -p "$(dirname "$NVIM_BUILD_DIR")"
-  git clone --depth 1 https://github.com/neovim/neovim.git "$NVIM_BUILD_DIR"
-  cd "$NVIM_BUILD_DIR"
+  NVIM_BUILD_DIR="$HOME/.local/src/neovim"
+  if [[ -d "$NVIM_BUILD_DIR" ]]; then
+    cd "$NVIM_BUILD_DIR"
+    git pull
+  else
+    mkdir -p "$(dirname "$NVIM_BUILD_DIR")"
+    git clone --depth 1 https://github.com/neovim/neovim.git "$NVIM_BUILD_DIR"
+    cd "$NVIM_BUILD_DIR"
+  fi
+  make CMAKE_BUILD_TYPE=RelWithDebInfo
+  sudo make install
+  cd "$DOTFILES_DIR"
 fi
-make CMAKE_BUILD_TYPE=RelWithDebInfo
-sudo make install
-cd "$DOTFILES_DIR"
 
 # ---------------------------------------------------------------------------
 # 5. tmux from source (latest)
 # ---------------------------------------------------------------------------
 step "Building tmux from source"
-TMUX_BUILD_DIR="$HOME/.local/src/tmux"
-if [[ -d "$TMUX_BUILD_DIR" ]]; then
-  cd "$TMUX_BUILD_DIR"
-  git pull
+if command -v tmux &>/dev/null; then
+  echo "tmux already installed ($(tmux -V)). Skipping."
 else
-  mkdir -p "$(dirname "$TMUX_BUILD_DIR")"
-  git clone --depth 1 https://github.com/tmux/tmux.git "$TMUX_BUILD_DIR"
-  cd "$TMUX_BUILD_DIR"
+  TMUX_BUILD_DIR="$HOME/.local/src/tmux"
+  if [[ -d "$TMUX_BUILD_DIR" ]]; then
+    cd "$TMUX_BUILD_DIR"
+    git pull
+  else
+    mkdir -p "$(dirname "$TMUX_BUILD_DIR")"
+    git clone --depth 1 https://github.com/tmux/tmux.git "$TMUX_BUILD_DIR"
+    cd "$TMUX_BUILD_DIR"
+  fi
+  sh autogen.sh
+  ./configure --enable-utf8proc
+  make
+  sudo make install
+  cd "$DOTFILES_DIR"
 fi
-sh autogen.sh
-./configure
-make
-sudo make install
-cd "$DOTFILES_DIR"
 
 # ---------------------------------------------------------------------------
 # 6. Nerd Fonts

@@ -1,14 +1,8 @@
-# You can use it to add commands that run after login to macOS user session.
-# 'start-at-login' needs to be 'true' for 'after-login-command' to work
-# Available commands: https://nikitabobko.github.io/AeroSpace/commands
-after-login-command = [
+# You can use it to add commands that run after AeroSpace startup.
+# Available commands : https://nikitabobko.github.io/AeroSpace/commands
+after-startup-command = [
     'exec-and-forget sleep 3 && aerospace list-windows --all --format "%{window-id} %{app-bundle-id}" | while read wid bid; do case "$bid" in com.mitchellh.ghostty) aerospace move-node-to-workspace --window-id "$wid" 1 ;; net.whatsapp.WhatsApp) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.mail) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.Safari) aerospace move-node-to-workspace --window-id "$wid" 7 ;; com.brave.Browser) aerospace move-node-to-workspace --window-id "$wid" 8 ;; esac; done',
 ]
-
-# You can use it to add commands that run after AeroSpace startup.
-# 'after-startup-command' is run after 'after-login-command'
-# Available commands : https://nikitabobko.github.io/AeroSpace/commands
-after-startup-command = []
 
 # Start AeroSpace at login
 start-at-login = true

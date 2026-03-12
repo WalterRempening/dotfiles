@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — Bootstrap a fresh macOS machine with all tools and projects
+# setup.sh — Bmotstrap a fresh macOS machine with all tools and projects
 # Usage: curl the dotfiles repo, then run ./setup.sh
 
 set -euo pipefail
@@ -170,22 +170,17 @@ CASKS=(
   keka
   linearmouse
   localsend
-  lulu
   mactex
-  mullvad-browser
   orbstack
   pcsx2
   pgadmin4
   powershell
-  proton-pass
   protonvpn
   qbittorrent
   retroarch
   skim
   spotify
   telegram
-  tor-browser
-  transmission
   vlc
 )
 
@@ -230,6 +225,7 @@ cd "$DOTFILES_DIR"
 for dir in */; do
   dir="${dir%/}"
   [[ "$dir" == "iosefin" ]] && continue
+  [[ "$dir" == "zsh-wsl" ]] && continue
   [[ "$dir" == "setup.sh" ]] && continue
   stow "$dir" 2>/dev/null || warn "Failed to stow $dir"
 done
@@ -251,7 +247,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 14. Clone iosefin projects
+# 14. TPM (tmux plugin manager)
+# ---------------------------------------------------------------------------
+step "Installing TPM"
+if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+  git clone --depth 1 https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+else
+  echo "TPM already installed."
+fi
+
+# ---------------------------------------------------------------------------
+# 15. Clone iosefin projects
 # ---------------------------------------------------------------------------
 step "Setting up iosefin workspace (~/Dev/iosefin)"
 mkdir -p "$IOSEFIN_DIR"

@@ -158,7 +158,7 @@ done
 # ---------------------------------------------------------------------------
 step "Installing brew casks"
 CASKS=(
-  aerospace
+  nikitabobko/tap/aerospace
   affinity
   appcleaner
   balenaetcher

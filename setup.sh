@@ -107,6 +107,7 @@ FORMULAE=(
   automake
   azure-cli
   bash
+  caddy
   cmake
   curl
   direnv
@@ -123,9 +124,12 @@ FORMULAE=(
   libmagic
   libpq
   mise
+  mosh
   ninja
+  nss
   node
   notmuch
+  openapi-generator
   opencode
   pillow
   pipx
@@ -135,6 +139,7 @@ FORMULAE=(
   python@3.14
   readline
   ripgrep
+  smartmontools
   sox
   starship
   stow

@@ -5,8 +5,8 @@
 # - Creates all project sessions with their Main window layout
 # - Auto-detects git worktrees and creates a window per worktree
 # - Copies env files from main worktree to all worktrees
-# - For dual-component projects (Unecre), pairs ui-*/api-* worktrees
-#   into a 3-pane window (left split: UI top / API bottom + right full)
+# - For dual-component projects (Sbs, Unecre), pairs worktrees sharing
+#   the same parent directory into a 3-pane window (left: UI/API, right: parent)
 
 set -euo pipefail
 trap 'echo "ERROR at line $LINENO (exit $?)" >&2' ERR
@@ -48,15 +48,15 @@ add_worktree_window() {
   tmux select-pane -t "$session:$wt_name.$P1"
 }
 
-# Create a window with 3 panes: left split (UI top, API bottom) + right full (parent, active)
+# Create a window with 3 panes: left split (API top, UI bottom) + right full (parent, active)
 add_paired_worktree_window() {
   local session="$1" ui_path="$2" api_path="$3" wt_name="$4"
   local parent_dir
   parent_dir=$(dirname "$ui_path")
-  echo "    + window '$wt_name' (3 panes, paired) → ui: $ui_path / api: $api_path"
-  tmux new-window -t "$session" -n "$wt_name" -c "$ui_path"
+  echo "    + window '$wt_name' (3 panes, paired) → api: $api_path / ui: $ui_path"
+  tmux new-window -t "$session" -n "$wt_name" -c "$api_path"
   tmux split-window -h -t "$session:$wt_name.$P0" -c "$parent_dir"
-  tmux split-window -v -t "$session:$wt_name.$P0" -c "$api_path"
+  tmux split-window -v -t "$session:$wt_name.$P0" -c "$ui_path"
   tmux select-pane -t "$session:$wt_name.$P2"
 }
 
@@ -109,56 +109,51 @@ add_repo_worktrees() {
 }
 
 # Process worktrees for a dual-component project (separate UI + API repos).
+# Pairs worktrees that share the same parent directory into a 3-pane window.
 add_dual_repo_worktrees() {
   local session="$1" ui_repo="$2" api_repo="$3"
-  local ui_wts api_wts processed=""
+  local ui_wts api_wts
 
   ui_wts=$(get_worktrees "$ui_repo")
   api_wts=$(get_worktrees "$api_repo")
   [ -z "$ui_wts" ] && [ -z "$api_wts" ] && return 0
 
+  # Index API worktrees by parent directory
+  declare -A api_by_parent
+  if [ -n "$api_wts" ]; then
+    while IFS= read -r api_path; do
+      [ -z "$api_path" ] && continue
+      api_by_parent["$(dirname "$api_path")"]="$api_path"
+    done <<< "$api_wts"
+  fi
+
+  local paired_api=""
+
+  # Match UI worktrees with API worktrees in the same parent directory
   if [ -n "$ui_wts" ]; then
     while IFS= read -r ui_path; do
       [ -z "$ui_path" ] && continue
-      local ui_name
-      ui_name=$(basename "$ui_path")
+      local parent_dir wt_name
+      parent_dir=$(dirname "$ui_path")
+      wt_name=$(basename "$parent_dir")
 
-      if [[ "$ui_name" == ui-* ]]; then
-        local stripped="${ui_name#ui-}"
-        local api_path=""
-        if [ -n "$api_wts" ]; then
-          while IFS= read -r candidate; do
-            [ -z "$candidate" ] && continue
-            if [ "$(basename "$candidate")" = "api-$stripped" ]; then
-              api_path="$candidate"
-              break
-            fi
-          done <<< "$api_wts"
-        fi
-
-        if [ -n "$api_path" ]; then
-          add_paired_worktree_window "$session" "$ui_path" "$api_path" "$stripped"
-          processed="$processed|$api_path"
-        else
-          add_worktree_window "$session" "$ui_path" "$stripped"
-        fi
+      if [ -n "${api_by_parent[$parent_dir]+x}" ]; then
+        add_paired_worktree_window "$session" "$ui_path" "${api_by_parent[$parent_dir]}" "$wt_name"
+        paired_api="$paired_api|${api_by_parent[$parent_dir]}"
       else
-        add_worktree_window "$session" "$ui_path"
+        add_worktree_window "$session" "$ui_path" "$wt_name"
       fi
     done <<< "$ui_wts"
   fi
 
+  # Add remaining unpaired API worktrees
   if [ -n "$api_wts" ]; then
     while IFS= read -r api_path; do
       [ -z "$api_path" ] && continue
-      [[ "$processed" == *"|$api_path"* ]] && continue
-      local api_name
-      api_name=$(basename "$api_path")
-      if [[ "$api_name" == api-* ]]; then
-        add_worktree_window "$session" "$api_path" "${api_name#api-}"
-      else
-        add_worktree_window "$session" "$api_path"
-      fi
+      [[ "$paired_api" == *"|$api_path"* ]] && continue
+      local wt_name
+      wt_name=$(basename "$(dirname "$api_path")")
+      add_worktree_window "$session" "$api_path" "$wt_name"
     done <<< "$api_wts"
   fi
 }

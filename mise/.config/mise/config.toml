@@ -2,3 +2,4 @@
 node = "latest"
 java = "25"
 dotnet = "9"
+kotlin = { version = "2.3.20", asset_pattern = "kotlin-compiler-*.zip", bin_path = "kotlinc/bin" }

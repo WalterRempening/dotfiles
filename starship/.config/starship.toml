@@ -84,7 +84,8 @@ format = '[[ $symbol ($version) ](fg:#769ff0 bg:#212736)]($style)'
 
 [kotlin]
 symbol = ' '
-kotlin_binary = 'kotlin'
+style = "bg:#212736"
+format = '[[ $symbol ($version) ](fg:#769ff0 bg:#212736)]($style)'
 
 [time]
 disabled = false

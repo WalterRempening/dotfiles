@@ -1,5 +1,4 @@
 [tools]
 node = "latest"
 java = "25"
-kotlin = "latest"
 dotnet = "9"

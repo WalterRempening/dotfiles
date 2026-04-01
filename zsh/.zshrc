@@ -101,6 +101,19 @@ _wakatime_heartbeat() {
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _wakatime_heartbeat
 
+skolaHopninjDb() {
+  local file=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --file) file="$2"; shift 2 ;;
+      *)      echo "Usage: skolaHopninjDb --file /path/to/dump"; return 1 ;;
+    esac
+  done
+  [[ -z "$file" ]] && { echo "Usage: skolaHopninjDb --file /path/to/dump"; return 1; }
+  [[ ! -f "$file" ]] && { echo "Error: file not found: $file"; return 1; }
+  PGPASSWORD=skola pg_restore --host=localhost --port=5435 --username=skola --dbname=skola --clean --no-owner --no-privileges "$file"
+}
+
 # Iosefin workspace management
 iosefin() {
   case "${1:-}" in

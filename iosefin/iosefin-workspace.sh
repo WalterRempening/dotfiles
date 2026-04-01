@@ -232,6 +232,64 @@ sync_env "$BASE/unecre/web_point_of_sale"
 sync_env "$BASE/unecre/api_point_of_sale"
 
 # ===========================================================================
+# 6. Kassa — one window per project under kassa/
+# ===========================================================================
+echo "Kassa"
+KASSA_DIR="$BASE/kassa"
+mapfile -t KASSA_REPOS < <(discover_repos "$KASSA_DIR")
+if [ ${#KASSA_REPOS[@]} -gt 0 ]; then
+  if new_session "Kassa" "${KASSA_REPOS[0]}"; then
+    tmux rename-window -t "Kassa:Main" "$(basename "${KASSA_REPOS[0]}")"
+    tmux split-window -h -t "Kassa" -c "${KASSA_REPOS[0]}"
+    tmux select-pane  -t "Kassa.$P1"
+    add_repo_worktrees "Kassa" "${KASSA_REPOS[0]}"
+    for repo in "${KASSA_REPOS[@]:1}"; do
+      local_name=$(basename "$repo")
+      echo "    + window '$local_name' (2 panes) → $repo"
+      tmux new-window -t "Kassa" -n "$local_name" -c "$repo"
+      tmux split-window -h -t "Kassa:$local_name" -c "$repo"
+      tmux select-pane  -t "Kassa:$local_name.$P1"
+      add_repo_worktrees "Kassa" "$repo"
+    done
+    tmux select-window -t "Kassa:$(basename "${KASSA_REPOS[0]}")"
+  fi
+  for repo in "${KASSA_REPOS[@]}"; do
+    sync_env "$repo"
+  done
+else
+  echo "  No git repos found under $KASSA_DIR — skipping."
+fi
+
+# ===========================================================================
+# 7. Infra — one window per project under infra/
+# ===========================================================================
+echo "Infra"
+INFRA_DIR="$BASE/infra"
+mapfile -t INFRA_REPOS < <(discover_repos "$INFRA_DIR")
+if [ ${#INFRA_REPOS[@]} -gt 0 ]; then
+  if new_session "Infra" "${INFRA_REPOS[0]}"; then
+    tmux rename-window -t "Infra:Main" "$(basename "${INFRA_REPOS[0]}")"
+    tmux split-window -h -t "Infra" -c "${INFRA_REPOS[0]}"
+    tmux select-pane  -t "Infra.$P1"
+    add_repo_worktrees "Infra" "${INFRA_REPOS[0]}"
+    for repo in "${INFRA_REPOS[@]:1}"; do
+      local_name=$(basename "$repo")
+      echo "    + window '$local_name' (2 panes) → $repo"
+      tmux new-window -t "Infra" -n "$local_name" -c "$repo"
+      tmux split-window -h -t "Infra:$local_name" -c "$repo"
+      tmux select-pane  -t "Infra:$local_name.$P1"
+      add_repo_worktrees "Infra" "$repo"
+    done
+    tmux select-window -t "Infra:$(basename "${INFRA_REPOS[0]}")"
+  fi
+  for repo in "${INFRA_REPOS[@]}"; do
+    sync_env "$repo"
+  done
+else
+  echo "  No git repos found under $INFRA_DIR — skipping."
+fi
+
+# ===========================================================================
 echo ""
 echo "Workspace ready!"
 tmux list-sessions

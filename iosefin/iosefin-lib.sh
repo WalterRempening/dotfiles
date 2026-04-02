@@ -4,7 +4,7 @@
 BASE="$HOME/Dev/iosefin"
 IOSEFIN_DIR="$HOME/dotfiles/iosefin"
 PORTS_CONF="$IOSEFIN_DIR/iosefin-ports.conf"
-CADDYFILE="$HOME/.config/caddy/Caddyfile"
+CADDYFILE="/opt/homebrew/etc/Caddyfile"
 HOSTS_MARKER="iosefin-managed"
 
 ENV_PATTERNS=(.env .env.local .env.production .envrc .tool-versions .mise.toml)
@@ -463,6 +463,7 @@ generate_caddyfile() {
     [ -z "$domain" ] && continue
     content+="
 ${domain} {
+  tls internal
   reverse_proxy localhost:${port}
 }
 "
@@ -562,7 +563,6 @@ sync_caddy() {
   fi
 
   generate_caddyfile "$mappings"
-  update_etc_hosts "$mappings"
   reload_caddy
 
   # Print summary table

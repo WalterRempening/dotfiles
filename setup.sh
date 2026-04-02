@@ -109,6 +109,7 @@ FORMULAE=(
   bash
   caddy
   cmake
+  dnsmasq
   curl
   direnv
   eza
@@ -157,6 +158,20 @@ FORMULAE=(
 for formula in "${FORMULAE[@]}"; do
   brew install "$formula" 2>/dev/null || warn "Failed to install $formula"
 done
+
+# ---------------------------------------------------------------------------
+# 7b. dnsmasq + Caddy local TLS
+# ---------------------------------------------------------------------------
+step "Configuring dnsmasq for .test domains"
+if ! grep -q 'address=/.test/' /opt/homebrew/etc/dnsmasq.conf 2>/dev/null; then
+  echo 'address=/.test/127.0.0.1' >> /opt/homebrew/etc/dnsmasq.conf
+fi
+sudo brew services start dnsmasq 2>/dev/null || true
+sudo mkdir -p /etc/resolver
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/test >/dev/null
+
+step "Trusting Caddy local CA"
+caddy trust 2>/dev/null || warn "caddy trust failed — run manually after setup"
 
 # ---------------------------------------------------------------------------
 # 8. Brew casks

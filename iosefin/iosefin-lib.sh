@@ -285,9 +285,23 @@ copy_db_from_main() {
   wt_info=$(cat "$wt_path/.iosefin-db-info")
   IFS=: read -r wt_db_port wt_db_user wt_db_pass wt_db_name <<< "$wt_info"
 
-  # Start docker compose in worktree
+  # Start docker compose in worktree.
+  #
+  # Unset COMPOSE_* env vars first: if the user ran `iosefin sync` from
+  # *inside* another worktree's direnv, that worktree's
+  # COMPOSE_PROJECT_NAME leaks here via the subshell and beats the
+  # COMPOSE_PROJECT_NAME we wrote into this worktree's .env
+  # (shell env > .env in compose's precedence). Symptom: volumes/
+  # containers for worktree B get the project prefix of worktree A,
+  # and container_names collide with an earlier bring-up done from the
+  # correct shell. Unsetting here makes the per-worktree .env file the
+  # single source of truth for project naming.
   echo "    Starting docker compose..."
-  (cd "$wt_path" && docker compose up -d 2>/dev/null)
+  (
+    cd "$wt_path"
+    unset COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES
+    docker compose up -d 2>/dev/null
+  )
 
   # Wait for both postgres instances to be ready
   echo "    Waiting for postgres..."

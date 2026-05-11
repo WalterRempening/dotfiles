@@ -49,6 +49,32 @@ autocmd({ "BufRead", "BufNewFile" }, {
   end,
 })
 
+local function organize_imports_sync(bufnr, timeout_ms)
+  bufnr = bufnr or 0
+  local params = vim.lsp.util.make_range_params(0, "utf-8")
+  params.context = { only = { "source.organizeImports" }, diagnostics = {} }
+  local results = vim.lsp.buf_request_sync(bufnr, "textDocument/codeAction", params, timeout_ms or 1500)
+  for client_id, res in pairs(results or {}) do
+    local client = vim.lsp.get_client_by_id(client_id)
+    local offset_encoding = (client and client.offset_encoding) or "utf-8"
+    for _, action in ipairs(res.result or {}) do
+      if action.edit then
+        vim.lsp.util.apply_workspace_edit(action.edit, offset_encoding)
+      elseif type(action.command) == "table" then
+        client:exec_cmd(action.command)
+      end
+    end
+  end
+end
+
+autocmd("BufWritePre", {
+  group = augroup("organize-imports-on-save", { clear = true }),
+  pattern = { "*.kt", "*.kts", "*.java" },
+  callback = function(event)
+    organize_imports_sync(event.buf)
+  end,
+})
+
 autocmd("ColorScheme", {
   group = augroup("custom-highlights", { clear = true }),
   callback = function()

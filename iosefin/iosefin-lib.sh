@@ -58,11 +58,38 @@ slugify_branch() {
   echo "$branch" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed 's/^-//;s/-$//'
 }
 
+# Convert a worktree path to a stable slug derived from its directory basename.
+# Used for Docker resources (container_name, volume names, COMPOSE_PROJECT_NAME)
+# so a branch swap inside a worktree doesn't orphan its DB volume. Domains and
+# .env.local URLs intentionally still use slugify_branch — those should track
+# the branch under test so OAuth redirect URIs and bookmarks match the work.
+#
+# Strips the main repo's basename + "-" prefix when present so a worktree at
+# "$BASE/hopninj/skola-hopninj-app-feat-closing" with main at
+# "$BASE/hopninj/skola-hopninj-app" yields "feat-closing" rather than the full
+# "skola-hopninj-app-feat-closing". Worktrees whose dir doesn't share the main
+# repo's prefix (e.g. "$BASE/hopninj/modularization") use the basename as-is.
+slugify_worktree() {
+  local wt_path="$1" main_wt_path="$2"
+  local wt_base main_base slug
+  wt_base=$(basename "$wt_path")
+  main_base=$(basename "$main_wt_path")
+  if [ -n "$main_base" ] && [[ "$wt_base" == "${main_base}-"* ]]; then
+    slug="${wt_base#${main_base}-}"
+  else
+    slug="$wt_base"
+  fi
+  echo "$slug" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed 's/^-//;s/-$//'
+}
+
 # Look up project config from ports.conf: returns "domain:app_port:slot"
 get_project_config() {
   local repo="$1"
-  local rel="${repo#$BASE/}"
-  grep "^${rel}:" "$PORTS_CONF" 2>/dev/null | cut -d: -f2-
+  # Resolve symlinks so kassa/faktura → infra/faktura matches ports.conf
+  local resolved
+  resolved=$(cd "$repo" 2>/dev/null && pwd -P)
+  local rel="${resolved#$BASE/}"
+  grep "^${rel}:" "$PORTS_CONF" 2>/dev/null | cut -d: -f2- || true
 }
 
 # Calculate port offset for a worktree: (slot * 3 + wt_index) * 100
@@ -117,6 +144,7 @@ sync_env() {
 generate_compose_override() {
   local wt_path="$1" wt_slug="$2" offset="$3"
   local compose_file="$wt_path/docker-compose.yml"
+  [ -f "$compose_file" ] || compose_file="$wt_path/compose.yml"
   [ -f "$compose_file" ] || return 0
 
   local override_file="$wt_path/docker-compose.override.yml"
@@ -250,6 +278,20 @@ generate_compose_override() {
     }
   ' > "$override_file"
 
+  # Set unique project name so worktree containers don't conflict with main
+  local base_project
+  base_project=$(basename "$wt_path")
+  local env_compose="$wt_path/.env"
+  if [ -f "$env_compose" ]; then
+    if grep -q "^COMPOSE_PROJECT_NAME=" "$env_compose"; then
+      sed -i '' "s/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=${base_project}-${wt_slug}/" "$env_compose"
+    else
+      echo "COMPOSE_PROJECT_NAME=${base_project}-${wt_slug}" >> "$env_compose"
+    fi
+  else
+    echo "COMPOSE_PROJECT_NAME=${base_project}-${wt_slug}" > "$env_compose"
+  fi
+
   echo "    ${wt_slug}: generated docker-compose.override.yml (port offset +${offset})"
 
   # Store DB info for later use
@@ -268,6 +310,7 @@ copy_db_from_main() {
 
   # Read DB info for both main and worktree
   local main_compose="$main_wt/docker-compose.yml"
+  [ -f "$main_compose" ] || main_compose="$main_wt/compose.yml"
   [ -f "$main_compose" ] || return 0
   [ -f "$wt_path/.iosefin-db-info" ] || return 0
 
@@ -279,6 +322,12 @@ copy_db_from_main() {
   main_db_name=$(awk '/POSTGRES_DB:/ { print $2; exit }' "$main_compose")
 
   [ -n "$main_db_port" ] || return 0
+
+  # Check if main postgres is reachable before attempting copy
+  if ! PGPASSWORD="$main_db_pass" psql -h localhost -p "$main_db_port" -U "$main_db_user" -d "$main_db_name" -c "SELECT 1" &>/dev/null; then
+    echo "    Skipping DB copy — main postgres (port $main_db_port) not running"
+    return 0
+  fi
 
   # Parse worktree DB info
   local wt_info wt_db_port wt_db_user wt_db_pass wt_db_name
@@ -296,21 +345,14 @@ copy_db_from_main() {
   # and container_names collide with an earlier bring-up done from the
   # correct shell. Unsetting here makes the per-worktree .env file the
   # single source of truth for project naming.
-  echo "    Starting docker compose..."
   (
     cd "$wt_path"
     unset COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES COMPOSE_ENV_FILES
-    docker compose up -d 2>/dev/null
-  )
+    docker compose up -d 2>&1
+  ) || { echo "    WARNING: docker compose up failed — skipping DB copy"; return 0; }
 
-  # Wait for both postgres instances to be ready
+  # Wait for worktree postgres to be ready
   echo "    Waiting for postgres..."
-  local retries=0
-  while ! PGPASSWORD="$main_db_pass" psql -h localhost -p "$main_db_port" -U "$main_db_user" -d "$main_db_name" -c "SELECT 1" &>/dev/null; do
-    retries=$((retries + 1))
-    [ $retries -ge 30 ] && { echo "    ERROR: main postgres not ready after 30s"; return 1; }
-    sleep 1
-  done
   retries=0
   while ! PGPASSWORD="$wt_db_pass" psql -h localhost -p "$wt_db_port" -U "$wt_db_user" -d "$wt_db_name" -c "SELECT 1" &>/dev/null; do
     retries=$((retries + 1))
@@ -320,21 +362,19 @@ copy_db_from_main() {
 
   # Dump main and restore to worktree
   echo "    Copying database from main (port $main_db_port → $wt_db_port)..."
-  PGPASSWORD="$main_db_pass" pg_dump -h localhost -p "$main_db_port" -U "$main_db_user" "$main_db_name" \
-    | PGPASSWORD="$wt_db_pass" psql -h localhost -p "$wt_db_port" -U "$wt_db_user" -d "$wt_db_name" -q 2>/dev/null
-
-  if [ $? -eq 0 ]; then
+  if PGPASSWORD="$main_db_pass" pg_dump -h localhost -p "$main_db_port" -U "$main_db_user" "$main_db_name" \
+    | PGPASSWORD="$wt_db_pass" psql -h localhost -p "$wt_db_port" -U "$wt_db_user" -d "$wt_db_name" -q 2>/dev/null; then
     touch "$flag_file"
     echo "    Database copied successfully."
   else
-    echo "    WARNING: Database copy had errors (may be OK if schema differs)."
     touch "$flag_file"
+    echo "    WARNING: Database copy had errors (may be OK if schema differs)."
   fi
 }
 
 # Generate .env.worktree with port overrides and ensure .envrc loads it
 generate_env_worktree() {
-  local wt_path="$1" wt_slug="$2" offset="$3" app_port="$4"
+  local wt_path="$1" wt_slug="$2" offset="$3" app_port="$4" domain="$5"
   local env_file="$wt_path/.env.worktree"
   local envrc_file="$wt_path/.envrc"
 
@@ -354,24 +394,116 @@ generate_env_worktree() {
   {
     echo "# Auto-generated by iosefin sync — worktree port overrides"
     [ -n "$db_port" ] && echo "DB_PORT=$db_port"
-    [ -n "$wt_app_port" ] && echo "SERVER_PORT=$wt_app_port"
+    if [ -n "$wt_app_port" ]; then
+      echo "PORT=$wt_app_port"
+      echo "SERVER_PORT=$wt_app_port"
+      echo "ASPNETCORE_URLS=http://localhost:$wt_app_port"
+    fi
   } > "$env_file"
 
-  # Ensure .envrc loads .env.worktree (after .env)
-  if [ -f "$envrc_file" ]; then
-    if ! grep -qF ".env.worktree" "$envrc_file"; then
-      echo 'dotenv_if_exists .env.worktree' >> "$envrc_file"
-      command -v direnv &>/dev/null && direnv allow "$wt_path" 2>/dev/null
-      echo "    ${wt_slug}: added .env.worktree to .envrc"
+  # Ensure .envrc exists and loads .env.worktree
+  if [ ! -f "$envrc_file" ]; then
+    # Create .envrc for worktrees that don't have one (e.g. Next.js projects)
+    {
+      echo "dotenv_if_exists .env"
+      echo "dotenv_if_exists .env.local"
+      echo "dotenv_if_exists .env.worktree"
+    } > "$envrc_file"
+    command -v direnv &>/dev/null && direnv allow "$wt_path" 2>/dev/null
+    echo "    ${wt_slug}: created .envrc"
+  elif ! grep -qF ".env.worktree" "$envrc_file"; then
+    echo 'dotenv_if_exists .env.worktree' >> "$envrc_file"
+    command -v direnv &>/dev/null && direnv allow "$wt_path" 2>/dev/null
+    echo "    ${wt_slug}: added .env.worktree to .envrc"
+  fi
+
+  # Update worktree-specific URLs in .env.local
+  local env_local="$wt_path/.env.local"
+  if [ -n "$wt_app_port" ] && [ -f "$env_local" ]; then
+    # NEXTAUTH_URL → this UI repo's domain
+    if grep -q "^NEXTAUTH_URL=" "$env_local"; then
+      sed -i '' "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=https://${domain}.${wt_slug}.test|" "$env_local"
+    fi
+
+    # NEXT_PUBLIC_BACKEND_API_URL → paired API repo's domain (sibling worktree dir)
+    if grep -q "^NEXT_PUBLIC_BACKEND_API_URL=" "$env_local"; then
+      local api_domain
+      api_domain=$(find_sibling_domain "$wt_path")
+      if [ -n "$api_domain" ]; then
+        sed -i '' "s|^NEXT_PUBLIC_BACKEND_API_URL=.*|NEXT_PUBLIC_BACKEND_API_URL=\"https://${api_domain}.${wt_slug}.test\"|" "$env_local"
+      fi
     fi
   fi
+}
+
+# Find the domain of a paired repo that lives as a sibling directory of $1.
+# Used to resolve UI ↔ API pairing for env-var rewrites: a worktree's UI and API
+# checkouts share the same parent dir (e.g. sbs/returning-student/{skola-ui,skola-api}).
+# Returns the first matching sibling's domain from ports.conf (empty if none).
+find_sibling_domain() {
+  local wt_path="$1"
+  local parent
+  parent=$(dirname "$wt_path")
+  local sibling
+  for sibling in "$parent"/*/; do
+    sibling="${sibling%/}"
+    [ "$sibling" = "$wt_path" ] && continue
+    [ -e "$sibling/.git" ] || continue
+
+    # Resolve the sibling worktree to its primary checkout for ports.conf lookup
+    local sibling_main
+    sibling_main=$(git -C "$sibling" worktree list --porcelain 2>/dev/null | awk '/^worktree / { print substr($0, 10); exit }')
+    [ -n "$sibling_main" ] || continue
+
+    local config
+    config=$(get_project_config "$sibling_main")
+    [ -n "$config" ] || continue
+
+    local sibling_domain
+    IFS=: read -r sibling_domain _rest <<< "$config"
+    if [ -n "$sibling_domain" ]; then
+      echo "$sibling_domain"
+      return 0
+    fi
+  done
+}
+
+# Sync port overrides for all worktrees of a repo (env files)
+sync_ports() {
+  local repo="$1"
+  [ -d "$repo" ] || return 0
+
+  local config
+  config=$(get_project_config "$repo")
+  [ -n "$config" ] || return 0
+
+  local domain app_port slot
+  IFS=: read -r domain app_port slot <<< "$config"
+  [ "$app_port" -gt 0 ] 2>/dev/null || return 0
+
+  local worktrees
+  worktrees=$(get_worktrees "$repo")
+  [ -z "$worktrees" ] && return 0
+
+  local wt_index=0
+  while IFS= read -r wt; do
+    [ -z "$wt" ] || [ ! -d "$wt" ] && continue
+    wt_index=$((wt_index + 1))
+
+    local branch wt_slug offset
+    branch=$(get_worktree_branch "$repo" "$wt")
+    wt_slug=$(slugify_branch "$branch")
+    offset=$(port_offset "$slot" "$wt_index")
+
+    generate_env_worktree "$wt" "$wt_slug" "$offset" "$app_port" "$domain"
+  done <<< "$worktrees"
 }
 
 # Orchestrate docker setup for all worktrees of a repo
 sync_docker() {
   local repo="$1"
   [ -d "$repo" ] || return 0
-  [ -f "$repo/docker-compose.yml" ] || return 0
+  [ -f "$repo/docker-compose.yml" ] || [ -f "$repo/compose.yml" ] || return 0
 
   local config
   config=$(get_project_config "$repo")
@@ -393,9 +525,8 @@ sync_docker() {
     [ -z "$wt" ] || [ ! -d "$wt" ] && continue
     wt_index=$((wt_index + 1))
 
-    local branch wt_slug offset
-    branch=$(get_worktree_branch "$repo" "$wt")
-    wt_slug=$(slugify_branch "$branch")
+    local wt_slug offset
+    wt_slug=$(slugify_worktree "$wt" "$main_wt")
     offset=$(port_offset "$slot" "$wt_index")
 
     echo "  Worktree: $wt_slug (offset +$offset)"
@@ -408,9 +539,6 @@ sync_docker() {
 
     # Generate override
     generate_compose_override "$wt" "$wt_slug" "$offset"
-
-    # Generate .env.worktree with port overrides
-    generate_env_worktree "$wt" "$wt_slug" "$offset" "$app_port"
 
     # Copy DB from main
     copy_db_from_main "$main_wt" "$wt"
@@ -457,7 +585,7 @@ collect_domain_mappings() {
         wt_slug=$(slugify_branch "$branch")
         offset=$(port_offset "$slot" "$wt_index")
         wt_app_port=$((app_port + offset))
-        echo "${domain}-${wt_slug}.test:${wt_app_port}"
+        echo "${domain}.${wt_slug}.test:${wt_app_port}"
       fi
     done <<< "$worktrees"
   done
@@ -520,14 +648,20 @@ ${hosts_line}
 ${end_marker}"
 
   if grep -q "$start_marker" /etc/hosts 2>/dev/null; then
-    # Replace existing block using temp file (more robust than sed on macOS)
+    # Replace existing block using temp file
     local tmpfile
     tmpfile=$(mktemp)
-    awk -v start="$start_marker" -v end="$end_marker" -v block="$new_block" '
-      $0 == start { print block; skip=1; next }
-      $0 == end { skip=0; next }
-      !skip { print }
-    ' /etc/hosts > "$tmpfile"
+    local skip=0
+    while IFS= read -r line; do
+      if [ "$line" = "$start_marker" ]; then
+        echo "$new_block" >> "$tmpfile"
+        skip=1
+      elif [ "$line" = "$end_marker" ]; then
+        skip=0
+      elif [ "$skip" -eq 0 ]; then
+        echo "$line" >> "$tmpfile"
+      fi
+    done < /etc/hosts
     sudo cp "$tmpfile" /etc/hosts
     rm -f "$tmpfile"
   else
@@ -577,6 +711,7 @@ sync_caddy() {
   fi
 
   generate_caddyfile "$mappings"
+  update_etc_hosts "$mappings"
   reload_caddy
 
   # Print summary table

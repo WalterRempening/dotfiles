@@ -52,7 +52,7 @@ return {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
     config = function()
-      local parsers = { "lua", "vim", "vimdoc", "c", "c_sharp", "java", "kotlin", "typescript", "tsx", "javascript", "html", "css", "json", "yaml", "markdown", "markdown_inline", "latex" }
+      local parsers = { "lua", "vim", "vimdoc", "c", "c_sharp", "java", "kotlin", "typescript", "tsx", "javascript", "html", "css", "json", "yaml", "markdown", "markdown_inline", "latex", "clojure", "edn", "swift" }
       for _, parser in ipairs(parsers) do
         pcall(function() vim.treesitter.language.add(parser) end)
       end
@@ -66,7 +66,6 @@ return {
 
   {
     "nvim-telescope/telescope.nvim",
-    branch = "0.1.x",
     dependencies = { "nvim-lua/plenary.nvim", { "nvim-telescope/telescope-fzf-native.nvim", build = "make" } },
     keys = {
       { "<leader>ff", "<cmd>Telescope find_files<cr>", desc = "Find files" },
@@ -284,7 +283,9 @@ return {
         html = { "prettier" },
         css = { "prettier" },
         java = { "google-java-format" },
+        swift = { "swift_format" },
         -- kotlin uses LSP formatting (ktlint has stdin bugs)
+        go = { "goimports", "gofumpt" },
         c = { "clang-format" },
         cpp = { "clang-format" },
         cs = { "csharpier" },
@@ -374,9 +375,123 @@ return {
   },
 
   {
+    "nvim-neotest/neotest",
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "nvim-neotest/nvim-nio",
+      "antoinemadec/FixCursorHold.nvim",
+      "nvim-treesitter/nvim-treesitter",
+      "weilbith/neotest-gradle",
+      "fredrikaverpil/neotest-golang",
+    },
+    keys = {
+      { "<leader>tt", function() require("neotest").run.run() end, desc = "Run nearest test" },
+      { "<leader>tf", function() require("neotest").run.run(vim.fn.expand("%")) end, desc = "Run file tests" },
+      { "<leader>tl", function() require("neotest").run.run_last() end, desc = "Run last test" },
+      { "<leader>td", function() require("neotest").run.run({ strategy = "dap" }) end, desc = "Debug nearest test" },
+      { "<leader>ts", function() require("neotest").summary.toggle() end, desc = "Toggle test summary" },
+      { "<leader>to", function() require("neotest").output.open({ enter = true }) end, desc = "Show test output" },
+      { "<leader>tp", function() require("neotest").output_panel.toggle() end, desc = "Toggle output panel" },
+      { "<leader>tx", function() require("neotest").run.stop() end, desc = "Stop test" },
+    },
+    config = function()
+      require("neotest").setup({
+        adapters = {
+          require("neotest-gradle"),
+          require("neotest-golang")({
+            dap_go_enabled = true,
+          }),
+        },
+      })
+    end,
+  },
+
+  {
+    "stevearc/overseer.nvim",
+    keys = {
+      { "<leader>rr", "<cmd>OverseerRun<cr>", desc = "Run task" },
+      { "<leader>rt", "<cmd>OverseerToggle<cr>", desc = "Toggle task list" },
+      { "<leader>ra", "<cmd>OverseerQuickAction<cr>", desc = "Task quick action" },
+      { "<leader>ri", "<cmd>OverseerInfo<cr>", desc = "Overseer info" },
+      { "<leader>rb", "<cmd>OverseerBuild<cr>", desc = "Build task" },
+    },
+    opts = {
+      templates = { "builtin", "user.gradle_build", "user.gradle_test" },
+    },
+  },
+
+  {
     "mason-org/mason.nvim",
     build = ":MasonUpdate",
     opts = {},
+  },
+
+  {
+    "WhoIsSethDaniel/mason-tool-installer.nvim",
+    dependencies = { "mason-org/mason.nvim" },
+    event = "VeryLazy",
+    opts = {
+      ensure_installed = {
+        -- LSPs (go tools live in mise)
+        "typescript-language-server",
+        "jdtls",
+        "lua-language-server",
+        "clojure-lsp",
+        -- DAP adapters
+        "kotlin-debug-adapter",
+        "js-debug-adapter",
+        "codelldb",
+        "java-debug-adapter",
+        "java-test",
+        -- Formatters
+        "stylua",
+        "prettier",
+        "google-java-format",
+        "clang-format",
+        "csharpier",
+        -- Linters
+        "eslint_d",
+      },
+      auto_update = false,
+      run_on_start = true,
+    },
+  },
+
+  {
+    "leoluz/nvim-dap-go",
+    ft = "go",
+    dependencies = { "mfussenegger/nvim-dap" },
+    opts = {},
+  },
+
+  {
+    "mfussenegger/nvim-jdtls",
+    ft = "java",
+    dependencies = { "mfussenegger/nvim-dap" },
+  },
+
+  {
+    "kylechui/nvim-surround",
+    event = "VeryLazy",
+    opts = {},
+  },
+
+  {
+    "windwp/nvim-autopairs",
+    event = "InsertEnter",
+    dependencies = { "hrsh7th/nvim-cmp" },
+    config = function()
+      local autopairs = require("nvim-autopairs")
+      autopairs.setup({
+        check_ts = true,
+        ts_config = {
+          lua = { "string" },
+          javascript = { "template_string" },
+        },
+      })
+      local cmp_autopairs = require("nvim-autopairs.completion.cmp")
+      require("cmp").event:on("confirm_done", cmp_autopairs.on_confirm_done())
+    end,
   },
 
   {
@@ -415,8 +530,28 @@ return {
         { "<leader>c", group = "code" },
         { "<leader>d", group = "debug" },
         { "<leader>l", group = "latex" },
+        { "<leader>t", group = "test" },
+        { "<leader>r", group = "run/tasks" },
+        { "<leader>b", group = "buffers" },
       },
     },
+  },
+
+  {
+    "Olical/conjure",
+    ft = { "clojure", "fennel", "scheme" },
+    init = function()
+      vim.g["conjure#mapping#prefix"] = "<localleader>"
+      vim.g["conjure#filetype#scheme"] = false
+      vim.g["conjure#client#clojure#nrepl#eval#auto_require"] = true
+      vim.g["conjure#client#clojure#nrepl#connection#auto_repl#enabled"] = false
+    end,
+  },
+
+  {
+    "guns/vim-sexp",
+    ft = { "clojure", "lisp", "scheme" },
+    dependencies = { "tpope/vim-sexp-mappings-for-regular-people" },
   },
 
   { import = "plugins.lsp" },

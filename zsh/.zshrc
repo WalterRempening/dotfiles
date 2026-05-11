@@ -116,9 +116,10 @@ skolaHopninjDb() {
 
 # Iosefin workspace management
 iosefin() {
-  case "${1:-}" in
-    up)   ~/dotfiles/iosefin/iosefin-workspace.sh ;;
-    sync) ~/dotfiles/iosefin/iosefin-sync-worktrees.sh ;;
-    *)    echo "Usage: iosefin {up|sync}" ;;
+  local cmd="${1:-}"; shift || true
+  case "$cmd" in
+    up)   ~/dotfiles/iosefin/iosefin-workspace.sh "$@" ;;
+    sync) ~/dotfiles/iosefin/iosefin-sync-worktrees.sh "$@" ;;
+    *)    echo "Usage: iosefin {up [-p NAME] | sync}" ;;
   esac
 }

@@ -1,6 +1,13 @@
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 
+do
+  local shims = vim.env.HOME .. "/.local/share/mise/shims"
+  if vim.uv.fs_stat(shims) and not vim.env.PATH:find(shims, 1, true) then
+    vim.env.PATH = shims .. ":" .. vim.env.PATH
+  end
+end
+
 require("config.options")
 require("config.keymaps")
 require("config.autocmds")

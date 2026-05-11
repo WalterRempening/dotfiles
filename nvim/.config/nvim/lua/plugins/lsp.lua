@@ -18,6 +18,14 @@ return {
         map("K", vim.lsp.buf.hover, "Hover documentation")
         map("<leader>cr", vim.lsp.buf.rename, "Rename symbol")
         map("<leader>ca", vim.lsp.buf.code_action, "Code action")
+        map("<leader>ci", function()
+          vim.lsp.buf.code_action({
+            context = {
+              only = { "quickfix", "source" },
+              diagnostics = vim.diagnostic.get(bufnr, { lnum = vim.fn.line(".") - 1 }),
+            },
+          })
+        end, "Import / quickfix under cursor")
         map("<leader>cl", "<cmd>checkhealth lsp<cr>", "LSP info")
       end
 
@@ -26,7 +34,7 @@ return {
         callback = function(args)
           vim.lsp.start({
             name = "lua_ls",
-            cmd = { "lua-language-server" },
+            cmd = { vim.fn.stdpath("data") .. "/mason/bin/lua-language-server" },
             root_dir = vim.fs.root(args.buf, { ".luarc.json", ".luarc.jsonc", ".stylua.toml", "stylua.toml", ".git" }) or vim.fn.getcwd(),
             capabilities = capabilities,
             on_attach = on_attach,
@@ -59,7 +67,7 @@ return {
         callback = function(args)
           vim.lsp.start({
             name = "ts_ls",
-            cmd = { "typescript-language-server", "--stdio" },
+            cmd = { vim.fn.stdpath("data") .. "/mason/bin/typescript-language-server", "--stdio" },
             root_dir = vim.fs.root(args.buf, { "tsconfig.json", "jsconfig.json", "package.json", ".git" }) or vim.fn.getcwd(),
             capabilities = capabilities,
             on_attach = on_attach,
@@ -68,50 +76,32 @@ return {
         end,
       })
 
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern = "java",
+vim.api.nvim_create_autocmd("FileType", {
+        pattern = "go",
         callback = function(args)
-          local root_dir = vim.fs.root(args.buf, { "build.gradle", "build.gradle.kts", "pom.xml", "settings.gradle", "settings.gradle.kts", ".git" }) or vim.fn.getcwd()
-          local project_name = vim.fn.fnamemodify(root_dir, ":p:h:t")
-          local workspace_dir = vim.fn.stdpath("data") .. "/jdtls-workspace/" .. project_name
-
           vim.lsp.start({
-            name = "jdtls",
-            cmd = {
-              vim.fn.stdpath("data") .. "/mason/bin/jdtls",
-              "-data", workspace_dir,
-            },
-            root_dir = root_dir,
+            name = "gopls",
+            cmd = { "gopls" },
+            root_dir = vim.fs.root(args.buf, { "go.work", "go.mod", ".git" }) or vim.fn.getcwd(),
             capabilities = capabilities,
             on_attach = on_attach,
             single_file_support = true,
             settings = {
-              java = {
-                signatureHelp = { enabled = true },
-                completion = {
-                  favoriteStaticMembers = {
-                    "org.junit.Assert.*",
-                    "org.junit.jupiter.api.Assertions.*",
-                    "org.mockito.Mockito.*",
-                  },
-                  filteredTypes = {
-                    "com.sun.*",
-                    "io.micrometer.shaded.*",
-                    "java.awt.*",
-                    "jdk.*",
-                    "sun.*",
-                  },
-                },
-                sources = {
-                  organizeImports = {
-                    starThreshold = 9999,
-                    staticStarThreshold = 9999,
-                  },
+              gopls = {
+                analyses = { unusedparams = true, shadow = true },
+                staticcheck = true,
+                gofumpt = true,
+                completeUnimported = true,
+                usePlaceholders = true,
+                hints = {
+                  assignVariableTypes = true,
+                  compositeLiteralFields = true,
+                  constantValues = true,
+                  functionTypeParameters = true,
+                  parameterNames = true,
+                  rangeVariableTypes = true,
                 },
               },
-            },
-            init_options = {
-              bundles = {},
             },
           })
         end,
@@ -121,21 +111,12 @@ return {
         pattern = "kotlin",
         callback = function(args)
           vim.lsp.start({
-            name = "kotlin_language_server",
-            cmd = { vim.fn.stdpath("data") .. "/mason/bin/kotlin-language-server" },
+            name = "kotlin-lsp",
+            cmd = { "/opt/homebrew/bin/kotlin-lsp", "--stdio" },
             root_dir = vim.fs.root(args.buf, { "build.gradle", "build.gradle.kts", "pom.xml", "settings.gradle", "settings.gradle.kts", ".git" }) or vim.fn.getcwd(),
             capabilities = capabilities,
             on_attach = on_attach,
             single_file_support = true,
-            cmd_env = {
-              JAVA_HOME = vim.fn.expand("~/.local/share/mise/installs/java/21"),
-              JAVA_OPTS = "-Xmx4g",
-            },
-            settings = {
-              kotlin = {
-                compiler = { jvm = { target = "21" } },
-              },
-            },
           })
         end,
       })
@@ -246,6 +227,35 @@ return {
                 end
               end, "Toggle watch mode")
             end,
+          })
+        end,
+      })
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern = "swift",
+        callback = function(args)
+          vim.lsp.start({
+            name = "sourcekit",
+            cmd = { "sourcekit-lsp" },
+            root_dir = vim.fs.root(args.buf, { "Package.swift", "*.xcodeproj", "*.xcworkspace", "buildServer.json", "compile_commands.json", ".git" }) or vim.fn.getcwd(),
+            capabilities = vim.tbl_deep_extend("force", capabilities, {
+              workspace = { didChangeWatchedFiles = { dynamicRegistration = true } },
+            }),
+            on_attach = on_attach,
+            filetypes = { "swift", "objc", "objcpp", "c", "cpp" },
+          })
+        end,
+      })
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern = { "clojure", "edn" },
+        callback = function(args)
+          vim.lsp.start({
+            name = "clojure_lsp",
+            cmd = { vim.fn.stdpath("data") .. "/mason/bin/clojure-lsp" },
+            root_dir = vim.fs.root(args.buf, { "project.clj", "deps.edn", "build.boot", "shadow-cljs.edn", "bb.edn", ".git" }) or vim.fn.getcwd(),
+            capabilities = capabilities,
+            on_attach = on_attach,
           })
         end,
       })

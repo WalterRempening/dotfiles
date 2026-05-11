@@ -208,9 +208,17 @@ for session_name in "${ALL_SESSIONS[@]}"; do
     sync_env "$repo"
   done
 
-  # Sync docker (regardless of whether session exists)
+  # Sync docker first — generates docker-compose.override.yml and writes the
+  # current run's port into .iosefin-db-info. sync_ports below reads that file,
+  # so docker must run first or .env.worktree ends up with a stale port from
+  # the previous run while the override has the fresh one.
   for repo in "${REPOS[@]}"; do
     sync_docker "$repo"
+  done
+
+  # Sync worktree port overrides (reads .iosefin-db-info written above)
+  for repo in "${REPOS[@]}"; do
+    sync_ports "$repo"
   done
 done
 

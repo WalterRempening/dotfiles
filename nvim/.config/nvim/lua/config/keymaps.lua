@@ -15,6 +15,14 @@ map("n", "<leader>q", vim.diagnostic.setloclist, { desc = "Diagnostic list" })
 map("n", "<leader>w", "<cmd>w<CR>", { desc = "Save" })
 map("n", "<leader>W", "<cmd>wa<CR>", { desc = "Save all" })
 
+map("n", "<leader>bd", "<cmd>bd<CR>", { desc = "Delete buffer" })
+map("n", "<leader>bD", "<cmd>bd!<CR>", { desc = "Force delete buffer" })
+map("n", "<leader>bn", "<cmd>bn<CR>", { desc = "Next buffer" })
+map("n", "<leader>bp", "<cmd>bp<CR>", { desc = "Previous buffer" })
+map("n", "<leader>bo", "<cmd>%bd|e#|bd#<CR>", { desc = "Delete other buffers" })
+map("n", "<leader>ba", "<cmd>%bd<CR>", { desc = "Delete all buffers" })
+map("n", "<leader>bl", "<cmd>ls<CR>", { desc = "List buffers" })
+
 map("v", "<", "<gv", { desc = "Indent left" })
 map("v", ">", ">gv", { desc = "Indent right" })
 

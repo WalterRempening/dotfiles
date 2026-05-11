@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # iosefin-workspace.sh — Recreate the Iosefin tmux workspace
-# Usage: ./iosefin-workspace.sh
+# Usage: ./iosefin-workspace.sh [-p|--project NAME]
 #
-# - Creates all project sessions with their Main window layout
+# - Creates project sessions with their Main window layout
 # - Auto-detects git worktrees and creates a window per worktree
 # - Copies env files from main worktree to all worktrees
 # - For dual-component projects (Sbs, Unecre), pairs worktrees sharing
@@ -15,6 +15,39 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/iosefin-lib.sh"
 
 # ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+SELECTED_PROJECT=""
+
+usage() {
+  cat <<EOF
+Usage: iosefin up [options]
+  -p, --project NAME   Start only the named project (case-insensitive).
+                       Bypasses the default-exclusion list.
+  -h, --help           Show this help.
+
+Known projects:    Buakfieren, Hopninj, Sbs, Senova, Unecre, Kassa, Infra, Chopin, Tjikett
+Default-excluded:  Buakfieren, Unecre, Chopin, Tjikett  (run with -p to start them)
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--project)
+      SELECTED_PROJECT="${2:-}"
+      [ -z "$SELECTED_PROJECT" ] && { usage >&2; exit 1; }
+      shift 2
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+ALL_PROJECTS=(Buakfieren Hopninj Sbs Senova Unecre Kassa Infra Chopin Tjikett)
+DEFAULT_EXCLUDED=(Buakfieren Unecre Chopin Tjikett)
+
+# ---------------------------------------------------------------------------
 # tmux helpers
 # ---------------------------------------------------------------------------
 
@@ -25,6 +58,10 @@ new_session() {
     return 1
   fi
   tmux new-session -d -s "$name" -n Main -c "$dir"
+  if $_init_created; then
+    tmux kill-session -t _init 2>/dev/null || true
+    _init_created=false
+  fi
 }
 
 # Bootstrap the server so we can read config (need at least one session)
@@ -159,85 +196,95 @@ add_dual_repo_worktrees() {
 }
 
 # ===========================================================================
-# 1. Buakfieren — 2 panes, vertical split
+# Project session functions
 # ===========================================================================
-echo "Buakfieren"
-if new_session "Buakfieren" "$BASE/menoserv/buakfieren-app"; then
-  if $_init_created; then
-    tmux kill-session -t _init 2>/dev/null || true
-    _init_created=false
+
+start_buakfieren() {
+  echo "Buakfieren"
+  if new_session "Buakfieren" "$BASE/menoserv/buakfieren-app"; then
+    tmux split-window -h -t "Buakfieren:Main" -c "$BASE/menoserv/buakfieren-app"
+    tmux select-pane  -t "Buakfieren:Main.$P1"
+    add_repo_worktrees "Buakfieren" "$BASE/menoserv/buakfieren-app"
+    tmux select-window -t "Buakfieren:Main"
   fi
-  tmux split-window -h -t "Buakfieren:Main" -c "$BASE/menoserv/buakfieren-app"
-  tmux select-pane  -t "Buakfieren:Main.$P1"
-  add_repo_worktrees "Buakfieren" "$BASE/menoserv/buakfieren-app"
-  tmux select-window -t "Buakfieren:Main"
-fi
-sync_env "$BASE/menoserv/buakfieren-app"
+  sync_env "$BASE/menoserv/buakfieren-app"
+}
 
-# ===========================================================================
-# 2. Hopninj — 2 panes, vertical split
-# ===========================================================================
-echo "Hopninj"
-if new_session "Hopninj" "$BASE/hopninj/skola-hopninj-app"; then
-  tmux split-window -h -t "Hopninj:Main" -c "$BASE/hopninj/skola-hopninj-app"
-  tmux select-pane  -t "Hopninj:Main.$P1"
-  add_repo_worktrees "Hopninj" "$BASE/hopninj/skola-hopninj-app"
-  tmux select-window -t "Hopninj:Main"
-fi
-sync_env "$BASE/hopninj/skola-hopninj-app"
+start_hopninj() {
+  echo "Hopninj"
+  if new_session "Hopninj" "$BASE/hopninj/skola-hopninj-app"; then
+    tmux split-window -h -t "Hopninj:Main" -c "$BASE/hopninj/skola-hopninj-app"
+    tmux select-pane  -t "Hopninj:Main.$P1"
+    add_repo_worktrees "Hopninj" "$BASE/hopninj/skola-hopninj-app"
+    tmux select-window -t "Hopninj:Main"
+  fi
+  sync_env "$BASE/hopninj/skola-hopninj-app"
+}
 
-# ===========================================================================
-# 3. Sbs — 3 panes (left split: api/ui, right full: parent dir)
-# ===========================================================================
-echo "Sbs"
-if new_session "Sbs" "$BASE/sbs/skola-api"; then
-  tmux split-window -h -t "Sbs:Main.$P0" -c "$BASE/sbs"
-  tmux split-window -v -t "Sbs:Main.$P0" -c "$BASE/sbs/skola-ui"
-  tmux select-pane -t "Sbs:Main.$P2"
-  add_dual_repo_worktrees "Sbs" "$BASE/sbs/skola-ui" "$BASE/sbs/skola-api"
-  tmux select-window -t "Sbs:Main"
-fi
-sync_env "$BASE/sbs/skola-api"
-sync_env "$BASE/sbs/skola-ui"
+start_sbs() {
+  echo "Sbs"
+  if new_session "Sbs" "$BASE/sbs/skola-api"; then
+    tmux split-window -h -t "Sbs:Main.$P0" -c "$BASE/sbs"
+    tmux split-window -v -t "Sbs:Main.$P0" -c "$BASE/sbs/skola-ui"
+    tmux select-pane -t "Sbs:Main.$P2"
+    add_dual_repo_worktrees "Sbs" "$BASE/sbs/skola-ui" "$BASE/sbs/skola-api"
+    local extra_repo extra_name
+    for extra_repo in "$BASE/sbs/sbs-android" "$BASE/sbs/sbs-ios"; do
+      [ -d "$extra_repo/.git" ] || continue
+      extra_name=$(basename "$extra_repo")
+      echo "    + window '$extra_name' (2 panes) → $extra_repo"
+      tmux new-window -t "Sbs" -n "$extra_name" -c "$extra_repo"
+      tmux split-window -h -t "Sbs:$extra_name" -c "$extra_repo"
+      tmux select-pane  -t "Sbs:$extra_name.$P1"
+      add_repo_worktrees "Sbs" "$extra_repo"
+    done
+    tmux select-window -t "Sbs:Main"
+  fi
+  sync_env "$BASE/sbs/skola-api"
+  sync_env "$BASE/sbs/skola-ui"
+  [ -d "$BASE/sbs/sbs-android/.git" ] && sync_env "$BASE/sbs/sbs-android"
+  [ -d "$BASE/sbs/sbs-ios/.git" ] && sync_env "$BASE/sbs/sbs-ios"
+}
 
-# ===========================================================================
-# 4. Senova — 2 panes, vertical split
-# ===========================================================================
-echo "Senova"
-if new_session "Senova" "$BASE/senova/senova-pos"; then
-  tmux split-window -h -t "Senova:Main" -c "$BASE/senova/senova-pos"
-  tmux select-pane  -t "Senova:Main.$P1"
-  add_repo_worktrees "Senova" "$BASE/senova/senova-pos"
-  tmux select-window -t "Senova:Main"
-fi
-sync_env "$BASE/senova/senova-pos"
+start_senova() {
+  echo "Senova"
+  if new_session "Senova" "$BASE/senova/senova-pos"; then
+    tmux split-window -h -t "Senova:Main" -c "$BASE/senova/senova-pos"
+    tmux select-pane  -t "Senova:Main.$P1"
+    add_repo_worktrees "Senova" "$BASE/senova/senova-pos"
+    tmux select-window -t "Senova:Main"
+  fi
+  sync_env "$BASE/senova/senova-pos"
+}
 
-# ===========================================================================
-# 5. Unecre — 3 panes (left split: web/api, right full: parent dir)
-# ===========================================================================
-echo "Unecre"
-if new_session "Unecre" "$BASE/unecre/web_point_of_sale"; then
-  tmux split-window -h -t "Unecre:Main.$P0" -c "$BASE/unecre"
-  tmux split-window -v -t "Unecre:Main.$P0" -c "$BASE/unecre/api_point_of_sale"
-  tmux select-pane -t "Unecre:Main.$P2"
-  add_dual_repo_worktrees "Unecre" "$BASE/unecre/web_point_of_sale" "$BASE/unecre/api_point_of_sale"
-  tmux select-window -t "Unecre:Main"
-fi
-sync_env "$BASE/unecre/web_point_of_sale"
-sync_env "$BASE/unecre/api_point_of_sale"
+start_unecre() {
+  echo "Unecre"
+  if new_session "Unecre" "$BASE/unecre/web_point_of_sale"; then
+    tmux split-window -h -t "Unecre:Main.$P0" -c "$BASE/unecre"
+    tmux split-window -v -t "Unecre:Main.$P0" -c "$BASE/unecre/api_point_of_sale"
+    tmux select-pane -t "Unecre:Main.$P2"
+    add_dual_repo_worktrees "Unecre" "$BASE/unecre/web_point_of_sale" "$BASE/unecre/api_point_of_sale"
+    tmux select-window -t "Unecre:Main"
+  fi
+  sync_env "$BASE/unecre/web_point_of_sale"
+  sync_env "$BASE/unecre/api_point_of_sale"
+}
 
-# ===========================================================================
-# 6. Kassa — one window per project under kassa/
-# ===========================================================================
-echo "Kassa"
-KASSA_DIR="$BASE/kassa"
-mapfile -t KASSA_REPOS < <(discover_repos "$KASSA_DIR")
-if [ ${#KASSA_REPOS[@]} -gt 0 ]; then
+start_kassa() {
+  echo "Kassa"
+  local KASSA_DIR="$BASE/kassa"
+  local KASSA_REPOS
+  mapfile -t KASSA_REPOS < <(discover_repos "$KASSA_DIR")
+  if [ ${#KASSA_REPOS[@]} -eq 0 ]; then
+    echo "  No git repos found under $KASSA_DIR — skipping."
+    return 0
+  fi
   if new_session "Kassa" "${KASSA_REPOS[0]}"; then
     tmux rename-window -t "Kassa:Main" "$(basename "${KASSA_REPOS[0]}")"
     tmux split-window -h -t "Kassa" -c "${KASSA_REPOS[0]}"
     tmux select-pane  -t "Kassa.$P1"
     add_repo_worktrees "Kassa" "${KASSA_REPOS[0]}"
+    local repo local_name
     for repo in "${KASSA_REPOS[@]:1}"; do
       local_name=$(basename "$repo")
       echo "    + window '$local_name' (2 panes) → $repo"
@@ -248,25 +295,49 @@ if [ ${#KASSA_REPOS[@]} -gt 0 ]; then
     done
     tmux select-window -t "Kassa:$(basename "${KASSA_REPOS[0]}")"
   fi
+  local repo
   for repo in "${KASSA_REPOS[@]}"; do
     sync_env "$repo"
   done
-else
-  echo "  No git repos found under $KASSA_DIR — skipping."
-fi
+}
 
-# ===========================================================================
-# 7. Infra — one window per project under infra/
-# ===========================================================================
-echo "Infra"
-INFRA_DIR="$BASE/infra"
-mapfile -t INFRA_REPOS < <(discover_repos "$INFRA_DIR")
-if [ ${#INFRA_REPOS[@]} -gt 0 ]; then
+start_chopin() {
+  echo "Chopin"
+  if new_session "Chopin" "$BASE/chopin/chopin-app"; then
+    tmux split-window -h -t "Chopin:Main" -c "$BASE/chopin/chopin-app"
+    tmux select-pane  -t "Chopin:Main.$P1"
+    add_repo_worktrees "Chopin" "$BASE/chopin/chopin-app"
+    tmux select-window -t "Chopin:Main"
+  fi
+  sync_env "$BASE/chopin/chopin-app"
+}
+
+start_tjikett() {
+  echo "Tjikett"
+  if new_session "Tjikett" "$BASE/tjikett/tjikett-app"; then
+    tmux split-window -h -t "Tjikett:Main" -c "$BASE/tjikett/tjikett-app"
+    tmux select-pane  -t "Tjikett:Main.$P1"
+    add_repo_worktrees "Tjikett" "$BASE/tjikett/tjikett-app"
+    tmux select-window -t "Tjikett:Main"
+  fi
+  sync_env "$BASE/tjikett/tjikett-app"
+}
+
+start_infra() {
+  echo "Infra"
+  local INFRA_DIR="$BASE/infra"
+  local INFRA_REPOS
+  mapfile -t INFRA_REPOS < <(discover_repos "$INFRA_DIR")
+  if [ ${#INFRA_REPOS[@]} -eq 0 ]; then
+    echo "  No git repos found under $INFRA_DIR — skipping."
+    return 0
+  fi
   if new_session "Infra" "${INFRA_REPOS[0]}"; then
     tmux rename-window -t "Infra:Main" "$(basename "${INFRA_REPOS[0]}")"
     tmux split-window -h -t "Infra" -c "${INFRA_REPOS[0]}"
     tmux select-pane  -t "Infra.$P1"
     add_repo_worktrees "Infra" "${INFRA_REPOS[0]}"
+    local repo local_name
     for repo in "${INFRA_REPOS[@]:1}"; do
       local_name=$(basename "$repo")
       echo "    + window '$local_name' (2 panes) → $repo"
@@ -277,14 +348,64 @@ if [ ${#INFRA_REPOS[@]} -gt 0 ]; then
     done
     tmux select-window -t "Infra:$(basename "${INFRA_REPOS[0]}")"
   fi
+  local repo
   for repo in "${INFRA_REPOS[@]}"; do
     sync_env "$repo"
   done
-else
-  echo "  No git repos found under $INFRA_DIR — skipping."
-fi
+}
 
 # ===========================================================================
+# Dispatcher
+# ===========================================================================
+
+in_array() {  # in_array NEEDLE ARRAY...
+  local needle="$1"; shift
+  local item
+  for item in "$@"; do
+    [[ "${item,,}" == "${needle,,}" ]] && return 0
+  done
+  return 1
+}
+
+run_project() {
+  case "${1,,}" in
+    buakfieren) start_buakfieren ;;
+    hopninj)    start_hopninj ;;
+    sbs)        start_sbs ;;
+    senova)     start_senova ;;
+    unecre)     start_unecre ;;
+    kassa)      start_kassa ;;
+    infra)      start_infra ;;
+    chopin)     start_chopin ;;
+    tjikett)    start_tjikett ;;
+    *) echo "Unknown project: $1" >&2; echo "Known: ${ALL_PROJECTS[*]}" >&2; exit 1 ;;
+  esac
+}
+
+if [ -n "$SELECTED_PROJECT" ]; then
+  if ! in_array "$SELECTED_PROJECT" "${ALL_PROJECTS[@]}"; then
+    echo "Unknown project: $SELECTED_PROJECT" >&2
+    echo "Known: ${ALL_PROJECTS[*]}" >&2
+    exit 1
+  fi
+  run_project "$SELECTED_PROJECT"
+else
+  for proj in "${ALL_PROJECTS[@]}"; do
+    if in_array "$proj" "${DEFAULT_EXCLUDED[@]}"; then
+      echo "(skipping $proj — default-excluded; run with -p $proj to start)"
+      continue
+    fi
+    run_project "$proj"
+  done
+fi
+
+# Safety net: if we created _init and nothing ever called new_session
+# successfully (e.g. every project's session already existed), tear it down.
+if $_init_created; then
+  tmux kill-session -t _init 2>/dev/null || true
+  _init_created=false
+fi
+
 echo ""
 echo "Workspace ready!"
 tmux list-sessions

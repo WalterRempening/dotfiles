@@ -27,7 +27,7 @@ CURRENT_SESSION=$(tmux display-message -p '#{session_name}')
 # ---------------------------------------------------------------------------
 # Session definitions: session_name → mode + repos
 # ---------------------------------------------------------------------------
-ALL_SESSIONS=(Buakfieren Hopninj Sbs Senova Unecre Kassa Infra)
+ALL_SESSIONS=(Buakfieren Hopninj Sbs Senova Unecre Kassa Infra Tjikett)
 
 get_session_config() {
   local session="$1"
@@ -39,6 +39,7 @@ get_session_config() {
     Unecre)     echo "dual:$BASE/unecre/web_point_of_sale:$BASE/unecre/api_point_of_sale" ;;
     Kassa)      echo "auto:$BASE/kassa" ;;
     Infra)      echo "auto:$BASE/infra" ;;
+    Tjikett)    echo "auto:$BASE/tjikett" ;;
     *)          echo "" ;;
   esac
 }

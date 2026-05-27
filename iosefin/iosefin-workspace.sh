@@ -27,8 +27,8 @@ Usage: iosefin up [options]
                        Bypasses the default-exclusion list.
   -h, --help           Show this help.
 
-Known projects:    Buakfieren, Hopninj, Sbs, Senova, Unecre, Kassa, Infra, Chopin, Tjikett
-Default-excluded:  Buakfieren, Unecre, Chopin, Tjikett  (run with -p to start them)
+Known projects:    Buakfieren, Hopninj, Skola, Sbs, Senova, Unecre, Kassa, Infra, Chopin, Tjikett
+Default-excluded:  Buakfieren, Unecre  (run with -p to start them)
 EOF
 }
 
@@ -44,8 +44,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ALL_PROJECTS=(Buakfieren Hopninj Sbs Senova Unecre Kassa Infra Chopin Tjikett)
-DEFAULT_EXCLUDED=(Buakfieren Unecre Chopin Tjikett)
+ALL_PROJECTS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin Tjikett)
+DEFAULT_EXCLUDED=(Buakfieren Unecre)
 
 # ---------------------------------------------------------------------------
 # tmux helpers
@@ -221,13 +221,24 @@ start_hopninj() {
   sync_env "$BASE/hopninj/skola-hopninj-app"
 }
 
+start_skola() {
+  echo "Skola"
+  if new_session "Skola" "$BASE/skola/skola-app"; then
+    tmux split-window -h -t "Skola:Main" -c "$BASE/skola/skola-app"
+    tmux select-pane  -t "Skola:Main.$P1"
+    add_repo_worktrees "Skola" "$BASE/skola/skola-app"
+    tmux select-window -t "Skola:Main"
+  fi
+  sync_env "$BASE/skola/skola-app"
+}
+
 start_sbs() {
   echo "Sbs"
-  if new_session "Sbs" "$BASE/sbs/skola-api"; then
+  if new_session "Sbs" "$BASE/sbs/sbs-api"; then
     tmux split-window -h -t "Sbs:Main.$P0" -c "$BASE/sbs"
-    tmux split-window -v -t "Sbs:Main.$P0" -c "$BASE/sbs/skola-ui"
+    tmux split-window -v -t "Sbs:Main.$P0" -c "$BASE/sbs/sbs-ui"
     tmux select-pane -t "Sbs:Main.$P2"
-    add_dual_repo_worktrees "Sbs" "$BASE/sbs/skola-ui" "$BASE/sbs/skola-api"
+    add_dual_repo_worktrees "Sbs" "$BASE/sbs/sbs-ui" "$BASE/sbs/sbs-api"
     local extra_repo extra_name
     for extra_repo in "$BASE/sbs/sbs-android" "$BASE/sbs/sbs-ios"; do
       [ -d "$extra_repo/.git" ] || continue
@@ -240,8 +251,8 @@ start_sbs() {
     done
     tmux select-window -t "Sbs:Main"
   fi
-  sync_env "$BASE/sbs/skola-api"
-  sync_env "$BASE/sbs/skola-ui"
+  sync_env "$BASE/sbs/sbs-api"
+  sync_env "$BASE/sbs/sbs-ui"
   [ -d "$BASE/sbs/sbs-android/.git" ] && sync_env "$BASE/sbs/sbs-android"
   [ -d "$BASE/sbs/sbs-ios/.git" ] && sync_env "$BASE/sbs/sbs-ios"
 }
@@ -371,6 +382,7 @@ run_project() {
   case "${1,,}" in
     buakfieren) start_buakfieren ;;
     hopninj)    start_hopninj ;;
+    skola)      start_skola ;;
     sbs)        start_sbs ;;
     senova)     start_senova ;;
     unecre)     start_unecre ;;

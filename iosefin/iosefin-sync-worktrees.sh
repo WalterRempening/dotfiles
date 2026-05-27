@@ -27,14 +27,15 @@ CURRENT_SESSION=$(tmux display-message -p '#{session_name}')
 # ---------------------------------------------------------------------------
 # Session definitions: session_name → mode + repos
 # ---------------------------------------------------------------------------
-ALL_SESSIONS=(Buakfieren Hopninj Sbs Senova Unecre Kassa Infra Tjikett)
+ALL_SESSIONS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Tjikett)
 
 get_session_config() {
   local session="$1"
   case "$session" in
     Buakfieren) echo "single:$BASE/menoserv/buakfieren-app" ;;
     Hopninj)    echo "single:$BASE/hopninj/skola-hopninj-app" ;;
-    Sbs)        echo "dual:$BASE/sbs/skola-ui:$BASE/sbs/skola-api" ;;
+    Skola)      echo "single:$BASE/skola/skola-app" ;;
+    Sbs)        echo "dual:$BASE/sbs/sbs-ui:$BASE/sbs/sbs-api" ;;
     Senova)     echo "single:$BASE/senova/senova-pos" ;;
     Unecre)     echo "dual:$BASE/unecre/web_point_of_sale:$BASE/unecre/api_point_of_sale" ;;
     Kassa)      echo "auto:$BASE/kassa" ;;
@@ -102,7 +103,7 @@ sync_windows_single() {
 }
 
 # Dual mode: pair UI + API worktrees that share the same parent directory.
-# Layout: sbs/i18n/skola-ui + sbs/i18n/skola-api → window "i18n"
+# Layout: sbs/i18n/sbs-ui + sbs/i18n/sbs-api → window "i18n"
 #   ┌──────────┬──────────┐
 #   │ ui       │          │
 #   ├──────────┤ parent   │

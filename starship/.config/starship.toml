@@ -6,6 +6,7 @@ $directory\
 [](fg:#769ff0 bg:#394260)\
 $git_branch\
 $git_status\
+${custom.git_tag}\
 [](fg:#394260 bg:#212736)\
 $nodejs\
 $rust\
@@ -48,6 +49,17 @@ format = '[[ $symbol $branch ](fg:#769ff0 bg:#394260)]($style)'
 [git_status]
 style = "bg:#394260"
 format = '[[($all_status$ahead_behind )](fg:#769ff0 bg:#394260)]($style)'
+
+# Shows tag(s) pointing at the current HEAD, and nothing when HEAD has no tag.
+# Sits in the same #394260 segment as git_branch/git_status (no extra separators).
+[custom.git_tag]
+description = "git tag(s) at HEAD"
+when = "git tag --points-at HEAD 2>/dev/null | grep -q ."
+command = "git tag --points-at HEAD 2>/dev/null | paste -sd ',' -"
+symbol = ""
+style = "bg:#394260"
+format = '[[ $symbol $output ](fg:#769ff0 bg:#394260)]($style)'
+shell = ["bash", "--noprofile", "--norc"]
 
 [nodejs]
 symbol = ""

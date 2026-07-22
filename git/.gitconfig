@@ -6,10 +6,8 @@
   editor = nvim -f 
 [pull]
   rebase = true
-	
-[mergetool "vimdiff"]
+[mergetool "nvimdiff"]
   layout = "LOCAL,BASE,REMOTE / MERGED"
-	
 [filter "lfs"]
   clean = git-lfs clean -- %f
   smudge = git-lfs smudge -- %f

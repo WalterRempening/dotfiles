@@ -399,6 +399,18 @@ generate_env_worktree() {
       echo "SERVER_PORT=$wt_app_port"
       echo "ASPNETCORE_URLS=http://localhost:$wt_app_port"
     fi
+    # S3/MinIO + mail: apply the same offset the compose override uses, so the
+    # app driver reaches THIS worktree's containers instead of the base
+    # :9010 / :1025. Guarded so non-MinIO/non-mail projects stay unaffected.
+    # Base HOST ports (9010 minio S3, 1028 mailhog/mailpit SMTP) mirror the
+    # host-side mappings in docker-compose.yml (the offset applies to the host
+    # port, not the container port — mail is mapped 1028:1025).
+    if grep -qE '^[[:space:]]+minio:' "$wt_path/docker-compose.yml" 2>/dev/null; then
+      echo "SKOLA_STORAGE_S3_ENDPOINT=http://localhost:$((9010 + offset))"
+    fi
+    if grep -qE '^[[:space:]]+(mailhog|mailpit):' "$wt_path/docker-compose.yml" 2>/dev/null; then
+      echo "MAIL_PORT=$((1028 + offset))"
+    fi
   } > "$env_file"
 
   # Ensure .envrc exists and loads .env.worktree

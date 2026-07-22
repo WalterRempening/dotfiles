@@ -3,6 +3,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # Added by Antigravity
 export PATH="/Users/wrd/.antigravity/antigravity/bin:$PATH"
 export PULUMI_CONFIG_PASSPHRASE="w@LT3r@HOME"
+export PATH="$HOME/.config/emacs/bin:$PATH"
 
 # OrbStack Docker socket
 export DOCKER_HOST="unix:///Users/wrd/.orbstack/run/docker.sock"
@@ -12,10 +13,11 @@ alias vil="nvim -c Flog"
 alias vilu="nvim -c 'Flog -auto-update'"
 alias vif="nvim -c DiffviewOpen"
 alias dbui="nvim -c DBUI"
-alias ls="eza --icons=always -1"
-alias ll="eza --long --all --icons=always"
-alias lt="eza --tree --icons=always" 
+alias ls="eza --icons=auto -1"
+alias ll="eza --long --all --icons=auto"
+alias lt="eza --tree --icons=auto"
 alias lgit="lazygit"
+alias vemacs="emacs --init-directory=$HOME/.emacs-vanilla"  # vanilla Emacs, leaves Doom untouched
 alias ldock="lazydocker"
 alias jira="jiratui ui"
 
@@ -123,3 +125,53 @@ iosefin() {
     *)    echo "Usage: iosefin {up [-p NAME] | sync}" ;;
   esac
 }
+
+# GitLab project defaults: fast-forward merge + squash-on-by-default +
+# delete source branch after merge. Apply to a single project
+# (`gitlab-apply-defaults iosefin/new-thing`) or every project in a
+# group (`gitlab-apply-defaults --group iosefin`).
+gitlab-apply-defaults() {
+  local apply
+  apply() {
+    local id=$1 path=$2
+    local resp ok
+    resp=$(glab api "projects/$id" --method PUT \
+      -f merge_method=ff \
+      -f squash_option=default_on \
+      -f remove_source_branch_after_merge=true 2>&1)
+    ok=$(printf '%s' "$resp" | jq -r '
+      if (.merge_method=="ff" and .squash_option=="default_on")
+      then "OK" else "FAIL: \(.message // .error // .)" end
+    ' 2>/dev/null || echo "FAIL: $resp")
+    printf "→ %-40s %s\n" "$path" "$ok"
+  }
+  case "${1:-}" in
+    --group)
+      [[ -z "${2:-}" ]] && { echo "usage: gitlab-apply-defaults --group <group>"; return 1; }
+      glab api "groups/$2/projects?per_page=100&include_subgroups=true&archived=false" \
+        | jq -r '.[] | "\(.id)\t\(.path_with_namespace)"' \
+        | while IFS=$'\t' read -r id path; do apply "$id" "$path"; done
+      ;;
+    "")
+      echo "usage: gitlab-apply-defaults <namespace/project> | --group <group>"
+      return 1
+      ;;
+    *)
+      local id
+      id=$(glab api "projects/${1//\//%2F}" | jq -r '.id // empty')
+      [[ -z "$id" ]] && { echo "project not found: $1"; return 1; }
+      apply "$id" "$1"
+      ;;
+  esac
+}
+
+# pnpm
+export PNPM_HOME="/Users/wrd/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME/bin:"*) ;;
+  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+# pnpm end
+
+# Added by Antigravity IDE
+export PATH="/Users/wrd/.antigravity-ide/antigravity-ide/bin:$PATH"

@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ALL_PROJECTS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin Tjikett)
+ALL_PROJECTS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin TikjetGo)
 DEFAULT_EXCLUDED=(Buakfieren Unecre)
 
 # ---------------------------------------------------------------------------
@@ -323,15 +323,15 @@ start_chopin() {
   sync_env "$BASE/chopin/chopin-app"
 }
 
-start_tjikett() {
-  echo "Tjikett"
-  if new_session "Tjikett" "$BASE/tjikett/tjikett-app"; then
-    tmux split-window -h -t "Tjikett:Main" -c "$BASE/tjikett/tjikett-app"
-    tmux select-pane  -t "Tjikett:Main.$P1"
-    add_repo_worktrees "Tjikett" "$BASE/tjikett/tjikett-app"
-    tmux select-window -t "Tjikett:Main"
+start_tikjetgo() {
+  echo "TikjetGo"
+  if new_session "TikjetGo" "$BASE/tikjetgo/tikjetgo-app"; then
+    tmux split-window -h -t "TikjetGo:Main" -c "$BASE/tikjetgo/tikjetgo-app"
+    tmux select-pane  -t "TikjetGo:Main.$P1"
+    add_repo_worktrees "TikjetGo" "$BASE/tikjetgo/tikjetgo-app"
+    tmux select-window -t "TikjetGo:Main"
   fi
-  sync_env "$BASE/tjikett/tjikett-app"
+  sync_env "$BASE/tikjetgo/tikjetgo-app"
 }
 
 start_infra() {
@@ -389,7 +389,7 @@ run_project() {
     kassa)      start_kassa ;;
     infra)      start_infra ;;
     chopin)     start_chopin ;;
-    tjikett)    start_tjikett ;;
+    tikjetgo)   start_tikjetgo ;;
     *) echo "Unknown project: $1" >&2; echo "Known: ${ALL_PROJECTS[*]}" >&2; exit 1 ;;
   esac
 }

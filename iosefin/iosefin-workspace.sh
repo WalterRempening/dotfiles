@@ -239,22 +239,48 @@ start_sbs() {
     tmux split-window -v -t "Sbs:Main.$P0" -c "$BASE/sbs/sbs-ui"
     tmux select-pane -t "Sbs:Main.$P2"
     add_dual_repo_worktrees "Sbs" "$BASE/sbs/sbs-ui" "$BASE/sbs/sbs-api"
+
+    # Extra windows, one per satellite repo.
+    #
+    # sbs-ios and sbs-android are gone: both native apps were replaced by the
+    # single Kotlin Multiplatform project, so two windows became one.
+    #
+    # The WordPress sites live inside sbs-db-wp-env, which is itself a repo.
+    # That matters for ibus-wp, which is still an empty reservation — without
+    # its own .git, every git command run there resolves to the ENCLOSING
+    # sbs-db-wp-env repo, so asking for its worktrees would silently graft that
+    # repo's worktrees onto an ibus-wp window. It gets a window and nothing
+    # else until something is actually cloned into it.
     local extra_repo extra_name
-    for extra_repo in "$BASE/sbs/sbs-android" "$BASE/sbs/sbs-ios"; do
-      [ -d "$extra_repo/.git" ] || continue
+    for extra_repo in \
+      "$BASE/sbs/sbs-mobile-kmp" \
+      "$BASE/sbs/sbs-db-wp-env/sbs-wp" \
+      "$BASE/sbs/sbs-db-wp-env/ibus-wp"; do
+      [ -d "$extra_repo" ] || continue
       extra_name=$(basename "$extra_repo")
-      echo "    + window '$extra_name' (2 panes) → $extra_repo"
-      tmux new-window -t "Sbs" -n "$extra_name" -c "$extra_repo"
-      tmux split-window -h -t "Sbs:$extra_name" -c "$extra_repo"
-      tmux select-pane  -t "Sbs:$extra_name.$P1"
-      add_repo_worktrees "Sbs" "$extra_repo"
+
+      if [ -e "$extra_repo/.git" ]; then
+        echo "    + window '$extra_name' (2 panes) → $extra_repo"
+        tmux new-window -t "Sbs" -n "$extra_name" -c "$extra_repo"
+        tmux split-window -h -t "Sbs:$extra_name" -c "$extra_repo"
+        tmux select-pane  -t "Sbs:$extra_name.$P1"
+        add_repo_worktrees "Sbs" "$extra_repo"
+      else
+        echo "    + window '$extra_name' (2 panes, not a repo yet) → $extra_repo"
+        tmux new-window -t "Sbs" -n "$extra_name" -c "$extra_repo"
+        tmux split-window -h -t "Sbs:$extra_name" -c "$extra_repo"
+        tmux select-pane  -t "Sbs:$extra_name.$P1"
+      fi
     done
     tmux select-window -t "Sbs:Main"
   fi
   sync_env "$BASE/sbs/sbs-api"
   sync_env "$BASE/sbs/sbs-ui"
-  [ -d "$BASE/sbs/sbs-android/.git" ] && sync_env "$BASE/sbs/sbs-android"
-  [ -d "$BASE/sbs/sbs-ios/.git" ] && sync_env "$BASE/sbs/sbs-ios"
+  # Only repos with their own .git — sync_env on ibus-wp would copy
+  # sbs-db-wp-env's env files into it, for the same enclosing-repo reason.
+  [ -e "$BASE/sbs/sbs-mobile-kmp/.git" ] && sync_env "$BASE/sbs/sbs-mobile-kmp"
+  [ -e "$BASE/sbs/sbs-db-wp-env/sbs-wp/.git" ] && sync_env "$BASE/sbs/sbs-db-wp-env/sbs-wp"
+  return 0
 }
 
 start_senova() {

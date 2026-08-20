@@ -181,10 +181,25 @@ generate_compose_override() {
       print "CONTAINER:" current_svc ":" val
     }
 
-    # Port mappings (handle "HOST:CONTAINER" format, strip comments)
-    in_services && /- "?[0-9]+:[0-9]+"?/ {
+    # Port mappings (handle "HOST:CONTAINER" format, strip comments).
+    #
+    # A published port may be a literal (5432:5432) or parameterised
+    # (${MINIO_API_PORT:-9020}:9000). Matching only literals made the minio
+    # and mailhog services of sbs-api invisible here, so no offset was written
+    # for them and the worktree mail container came up on the shared base
+    # port while the app was pointed somewhere else.
+    in_services && !/^[[:space:]]*#/ && \
+      /- *"?(\$\{[A-Za-z_][A-Za-z0-9_]*:-[0-9]+\}|[0-9]+):[0-9]+/ {
       line = $0
       sub(/#.*/, "", line)
+      # Resolve ${VAR:-9020} down to the default it declares, before the
+      # punctuation is stripped, so the host port survives as a plain number.
+      while (match(line, /\$\{[A-Za-z_][A-Za-z0-9_]*:-[0-9]+\}/)) {
+        num = substr(line, RSTART, RLENGTH)
+        sub(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-/, "", num)
+        sub(/\}$/, "", num)
+        line = substr(line, 1, RSTART - 1) num substr(line, RSTART + RLENGTH)
+      }
       gsub(/[" -]/, "", line)
       gsub(/^ +/, "", line)
       split(line, parts, ":")
@@ -373,6 +388,31 @@ copy_db_from_main() {
 }
 
 # Generate .env.worktree with port overrides and ensure .envrc loads it
+# Host port a service publishes for a given container port, as the compose
+# file of that worktree declares it: a literal, or the default inside
+# ${VAR:-default}.
+#
+# Exists because the offsets below used to be added to hardcoded bases (9010
+# MinIO, 1028 mail). Those are the ports skola-app publishes. sbs-api uses
+# 9020 and 1025, so a +700 worktree got 9710/1728 written into .env.worktree
+# while its containers came up elsewhere — the app then dialled a port nothing
+# was listening on and every upload failed with "Connection refused". Reading
+# the number from the file keeps the two in step per repo.
+_compose_host_port() {
+  local file="$1" service="$2" container_port="$3" line
+  [ -f "$file" ] || return 1
+  line=$(awk -v svc="$service" -v cp="$container_port" '
+    $0 ~ "^[[:space:]]+" svc ":[[:space:]]*$" { in_svc = 1; next }
+    in_svc && /^[[:space:]]{1,2}[a-zA-Z0-9_-]+:[[:space:]]*$/ { in_svc = 0 }
+    in_svc && $0 ~ ":" cp "\"?([[:space:]]|$|#)" { print; exit }
+  ' "$file")
+  [ -n "$line" ] || return 1
+  printf '%s\n' "$line" | sed -E \
+    -e 's/.*\$\{[A-Za-z_][A-Za-z0-9_]*:-([0-9]+)\}:.*/\1/' \
+    -e 't' \
+    -e 's/.*[-"[:space:]]([0-9]+):[0-9]+.*/\1/'
+}
+
 generate_env_worktree() {
   local wt_path="$1" wt_slug="$2" offset="$3" app_port="$4" domain="$5"
   local env_file="$wt_path/.env.worktree"
@@ -400,11 +440,12 @@ generate_env_worktree() {
       echo "ASPNETCORE_URLS=http://localhost:$wt_app_port"
     fi
     # S3/MinIO + mail: apply the same offset the compose override uses, so the
-    # app driver reaches THIS worktree's containers instead of the base
-    # :9010 / :1025. Guarded so non-MinIO/non-mail projects stay unaffected.
-    # Base HOST ports (9010 minio S3, 1028 mailhog/mailpit SMTP) mirror the
-    # host-side mappings in the compose file (the offset applies to the host
-    # port, not the container port — mail is mapped 1028:1025).
+    # app driver reaches THIS worktree's containers instead of the base ones.
+    # Guarded so non-MinIO/non-mail projects stay unaffected.
+    #
+    # The base HOST port is read from the repo's own compose file rather than
+    # assumed: the offset applies to whatever that repo publishes, and the two
+    # repos here do not agree (skola-app 9010/1028, sbs-api 9020/1025).
     #
     # Reads whichever compose filename the repo uses. sbs-api renamed its file
     # to compose.yml, so probing only docker-compose.yml silently found no
@@ -414,12 +455,25 @@ generate_env_worktree() {
     # generate_compose_override and sync_ports.
     local wt_compose="$wt_path/docker-compose.yml"
     [ -f "$wt_compose" ] || wt_compose="$wt_path/compose.yml"
+    local minio_base mail_base mail_svc
     if grep -qE '^[[:space:]]+minio:' "$wt_compose" 2>/dev/null; then
-      echo "SKOLA_STORAGE_S3_ENDPOINT=http://localhost:$((9010 + offset))"
+      minio_base=$(_compose_host_port "$wt_compose" minio 9000)
+      if [ -n "$minio_base" ]; then
+        echo "SKOLA_STORAGE_S3_ENDPOINT=http://localhost:$((minio_base + offset))"
+      else
+        echo "    ${wt_slug}: could not read the minio host port from $(basename "$wt_compose")" >&2
+      fi
     fi
-    if grep -qE '^[[:space:]]+(mailhog|mailpit):' "$wt_compose" 2>/dev/null; then
-      echo "MAIL_PORT=$((1028 + offset))"
-    fi
+    for mail_svc in mailhog mailpit; do
+      grep -qE "^[[:space:]]+${mail_svc}:" "$wt_compose" 2>/dev/null || continue
+      mail_base=$(_compose_host_port "$wt_compose" "$mail_svc" 1025)
+      if [ -n "$mail_base" ]; then
+        echo "MAIL_PORT=$((mail_base + offset))"
+      else
+        echo "    ${wt_slug}: could not read the ${mail_svc} host port from $(basename "$wt_compose")" >&2
+      fi
+      break
+    done
   } > "$env_file"
 
   # Ensure .envrc exists and loads .env.worktree

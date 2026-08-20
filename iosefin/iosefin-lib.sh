@@ -403,12 +403,21 @@ generate_env_worktree() {
     # app driver reaches THIS worktree's containers instead of the base
     # :9010 / :1025. Guarded so non-MinIO/non-mail projects stay unaffected.
     # Base HOST ports (9010 minio S3, 1028 mailhog/mailpit SMTP) mirror the
-    # host-side mappings in docker-compose.yml (the offset applies to the host
+    # host-side mappings in the compose file (the offset applies to the host
     # port, not the container port — mail is mapped 1028:1025).
-    if grep -qE '^[[:space:]]+minio:' "$wt_path/docker-compose.yml" 2>/dev/null; then
+    #
+    # Reads whichever compose filename the repo uses. sbs-api renamed its file
+    # to compose.yml, so probing only docker-compose.yml silently found no
+    # services and wrote neither variable — the app then talked to the BASE
+    # MinIO and mail instead of the worktree's, which looks like the worktree
+    # working until two of them are up at once. Mirrors the same fallback at
+    # generate_compose_override and sync_ports.
+    local wt_compose="$wt_path/docker-compose.yml"
+    [ -f "$wt_compose" ] || wt_compose="$wt_path/compose.yml"
+    if grep -qE '^[[:space:]]+minio:' "$wt_compose" 2>/dev/null; then
       echo "SKOLA_STORAGE_S3_ENDPOINT=http://localhost:$((9010 + offset))"
     fi
-    if grep -qE '^[[:space:]]+(mailhog|mailpit):' "$wt_path/docker-compose.yml" 2>/dev/null; then
+    if grep -qE '^[[:space:]]+(mailhog|mailpit):' "$wt_compose" 2>/dev/null; then
       echo "MAIL_PORT=$((1028 + offset))"
     fi
   } > "$env_file"

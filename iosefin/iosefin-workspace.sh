@@ -27,8 +27,12 @@ Usage: iosefin up [options]
                        Bypasses the default-exclusion list.
   -h, --help           Show this help.
 
-Known projects:    Buakfieren, Hopninj, Skola, Sbs, Senova, Unecre, Kassa, Infra, Chopin, Tjikett
+Known projects:    Buakfieren, Hopninj, Skola, Sbs, Senova, Unecre, Kassa, Infra,
+                   Chopin, TikjetGo, SubastasFroes, CocinasDyck
 Default-excluded:  Buakfieren, Unecre  (run with -p to start them)
+
+Project names are matched case-insensitively and ignore -/_, so
+"SubastasFroes", "subastas-froes" and "subastas_froes" are equivalent.
 EOF
 }
 
@@ -44,7 +48,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ALL_PROJECTS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin TikjetGo)
+ALL_PROJECTS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin TikjetGo SubastasFroes CocinasDyck)
 DEFAULT_EXCLUDED=(Buakfieren Unecre)
 
 # ---------------------------------------------------------------------------
@@ -355,27 +359,66 @@ start_tikjetgo() {
     tmux split-window -h -t "TikjetGo:Main" -c "$BASE/tikjetgo/tikjetgo-app"
     tmux select-pane  -t "TikjetGo:Main.$P1"
     add_repo_worktrees "TikjetGo" "$BASE/tikjetgo/tikjetgo-app"
+
+    # Extra windows, one per satellite repo.
+    #
+    # tikjetgo-android and tikjetgo-ios never get windows: both native apps
+    # were replaced by the single Kotlin Multiplatform project, the same way
+    # sbs-ios/sbs-android collapsed into sbs-mobile-kmp. The old checkouts are
+    # still on disk, so this is an explicit list rather than a directory scan.
+    local extra_repo extra_name
+    # shellcheck disable=SC2066  # single entry today; list kept for more later
+    for extra_repo in \
+      "$BASE/tikjetgo/tikjetgo-mobile-kmp"; do
+      [ -d "$extra_repo" ] || continue
+      extra_name=$(basename "$extra_repo")
+      echo "    + window '$extra_name' (2 panes) → $extra_repo"
+      tmux new-window -t "TikjetGo" -n "$extra_name" -c "$extra_repo"
+      tmux split-window -h -t "TikjetGo:$extra_name" -c "$extra_repo"
+      tmux select-pane  -t "TikjetGo:$extra_name.$P1"
+      if [ -e "$extra_repo/.git" ]; then
+        add_repo_worktrees "TikjetGo" "$extra_repo"
+      fi
+    done
+
     tmux select-window -t "TikjetGo:Main"
   fi
   sync_env "$BASE/tikjetgo/tikjetgo-app"
+  if [ -e "$BASE/tikjetgo/tikjetgo-mobile-kmp/.git" ]; then
+    sync_env "$BASE/tikjetgo/tikjetgo-mobile-kmp"
+  fi
+  return 0
 }
 
 start_infra() {
   echo "Infra"
   local INFRA_DIR="$BASE/infra"
-  local INFRA_REPOS
+  local INFRA_REPOS repo local_name
   mapfile -t INFRA_REPOS < <(discover_repos "$INFRA_DIR")
-  if [ ${#INFRA_REPOS[@]} -eq 0 ]; then
-    echo "  No git repos found under $INFRA_DIR — skipping."
-    return 0
-  fi
-  if new_session "Infra" "${INFRA_REPOS[0]}"; then
-    tmux rename-window -t "Infra:Main" "$(basename "${INFRA_REPOS[0]}")"
-    tmux split-window -h -t "Infra" -c "${INFRA_REPOS[0]}"
-    tmux select-pane  -t "Infra.$P1"
-    add_repo_worktrees "Infra" "${INFRA_REPOS[0]}"
-    local repo local_name
-    for repo in "${INFRA_REPOS[@]:1}"; do
+
+  # The first window is the compose root ($INFRA_DIR) itself, not the first
+  # discovered child repo: docker-compose.yml and docker-compose.prod.yml live
+  # there, so the stack is always one window away instead of a `cd ..`.
+  #
+  # $INFRA_DIR is itself a git repo, but discover_repos only walks its
+  # children, so it never shows up twice. Everything under it is discovered
+  # automatically and gets its own window. kassa-web is gone from this list
+  # because it moved to the Kassa project, which discovers it the same way.
+  #
+  # There is one faktura checkout, infra/faktura — the clone iosefin-ports.conf
+  # registers on 8086. The infra/faktura-app duplicate was a second clone of
+  # the same GitLab repo and has been deleted.
+  if new_session "Infra" "$INFRA_DIR"; then
+    tmux rename-window -t "Infra:Main" "infra-compose"
+    tmux split-window -h -t "Infra:infra-compose" -c "$INFRA_DIR"
+    tmux select-pane  -t "Infra:infra-compose.$P1"
+    add_repo_worktrees "Infra" "$INFRA_DIR"
+
+    if [ ${#INFRA_REPOS[@]} -eq 0 ]; then
+      echo "  No git repos found under $INFRA_DIR — compose window only."
+    fi
+    for repo in "${INFRA_REPOS[@]:-}"; do
+      [ -n "$repo" ] || continue
       local_name=$(basename "$repo")
       echo "    + window '$local_name' (2 panes) → $repo"
       tmux new-window -t "Infra" -n "$local_name" -c "$repo"
@@ -383,29 +426,72 @@ start_infra() {
       tmux select-pane  -t "Infra:$local_name.$P1"
       add_repo_worktrees "Infra" "$repo"
     done
-    tmux select-window -t "Infra:$(basename "${INFRA_REPOS[0]}")"
+    tmux select-window -t "Infra:infra-compose"
   fi
-  local repo
-  for repo in "${INFRA_REPOS[@]}"; do
+  for repo in "${INFRA_REPOS[@]:-}"; do
+    [ -n "$repo" ] || continue
     sync_env "$repo"
   done
+  return 0
+}
+
+# Single-app project: one repo, one Main window, worktree windows if any.
+# Tolerates a directory that has been reserved but not cloned into yet, the
+# same way the Sbs ibus-wp window does — no .git means no worktree scan and no
+# sync_env, both of which would otherwise resolve against an enclosing repo.
+start_single_app() {
+  local session="$1" app_path="$2"
+  echo "$session"
+  if [ ! -d "$app_path" ]; then
+    echo "  $app_path does not exist yet — skipping."
+    return 0
+  fi
+  if new_session "$session" "$app_path"; then
+    tmux split-window -h -t "$session:Main" -c "$app_path"
+    tmux select-pane  -t "$session:Main.$P1"
+    if [ -e "$app_path/.git" ]; then
+      add_repo_worktrees "$session" "$app_path"
+    else
+      echo "  (not a git repo yet — no worktree windows)"
+    fi
+    tmux select-window -t "$session:Main"
+  fi
+  if [ -e "$app_path/.git" ]; then
+    sync_env "$app_path"
+  fi
+  return 0
+}
+
+start_subastas_froes() {
+  start_single_app "SubastasFroes" "$BASE/subastas-froes/ausruf-app"
+}
+
+start_cocinas_dyck() {
+  start_single_app "CocinasDyck" "$BASE/cocinas-dyck/erp-app"
 }
 
 # ===========================================================================
 # Dispatcher
 # ===========================================================================
 
+# Fold a project name to its match key: lowercase, no separators. Lets
+# "SubastasFroes", "subastas-froes" and "subastas_froes" all resolve.
+_norm() {
+  local s="${1,,}"
+  echo "${s//[-_]/}"
+}
+
 in_array() {  # in_array NEEDLE ARRAY...
-  local needle="$1"; shift
+  local needle; needle=$(_norm "$1"); shift
   local item
   for item in "$@"; do
-    [[ "${item,,}" == "${needle,,}" ]] && return 0
+    [[ "$(_norm "$item")" == "$needle" ]] && return 0
   done
   return 1
 }
 
 run_project() {
-  case "${1,,}" in
+  case "$(_norm "$1")" in
     buakfieren) start_buakfieren ;;
     hopninj)    start_hopninj ;;
     skola)      start_skola ;;
@@ -416,6 +502,8 @@ run_project() {
     infra)      start_infra ;;
     chopin)     start_chopin ;;
     tikjetgo)   start_tikjetgo ;;
+    subastasfroes) start_subastas_froes ;;
+    cocinasdyck)   start_cocinas_dyck ;;
     *) echo "Unknown project: $1" >&2; echo "Known: ${ALL_PROJECTS[*]}" >&2; exit 1 ;;
   esac
 }

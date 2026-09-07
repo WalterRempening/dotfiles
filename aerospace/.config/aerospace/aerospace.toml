@@ -1,7 +1,7 @@
 # You can use it to add commands that run after AeroSpace startup.
 # Available commands : https://nikitabobko.github.io/AeroSpace/commands
 after-startup-command = [
-    'exec-and-forget sleep 3 && aerospace list-windows --all --format "%{window-id} %{app-bundle-id}" | while read wid bid; do case "$bid" in com.mitchellh.ghostty) aerospace move-node-to-workspace --window-id "$wid" 1 ;; net.whatsapp.WhatsApp) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.mail) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.Safari) aerospace move-node-to-workspace --window-id "$wid" 7 ;; com.brave.Browser) aerospace move-node-to-workspace --window-id "$wid" 8 ;; esac; done',
+    'exec-and-forget sleep 3 && aerospace list-windows --all --format "%{window-id} %{app-bundle-id}" | while read wid bid; do case "$bid" in com.mitchellh.ghostty) aerospace move-node-to-workspace --window-id "$wid" 1 ;; net.whatsapp.WhatsApp) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.mail) aerospace move-node-to-workspace --window-id "$wid" 6 ;; com.apple.Safari) aerospace move-node-to-workspace --window-id "$wid" 7 ;; com.brave.Browser) aerospace move-node-to-workspace --window-id "$wid" 8 ;; com.apple.finder) aerospace layout --window-id "$wid" floating ;; com.apple.Passwords) aerospace layout --window-id "$wid" floating ;; me.proton.authenticator) aerospace layout --window-id "$wid" floating ;; esac; done',
 ]
 
 # Start AeroSpace at login
@@ -147,6 +147,10 @@ run = 'layout floating'
 
 [[on-window-detected]]
 if.app-id = 'com.apple.Passwords'
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.apple.finder'
 run = 'layout floating'
 
 [[on-window-detected]]

@@ -49,7 +49,7 @@ source <(fzf --zsh)
 source ~/.fzf-tab/fzf-tab.plugin.zsh
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
+eval "$(ccmux completion zsh)"
 # fzf-tab preview for cd (show directory contents)
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza --icons=always -1 --color=always $realpath'
 

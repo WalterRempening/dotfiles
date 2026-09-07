@@ -26,6 +26,14 @@ discover_repos() {
 get_worktrees() {
   local repo_path="$1"
   [ -d "$repo_path" ] || return 0
+  # A registered path that is not a repo yet — a reservation like
+  # cocinas-dyck/erp-app, which holds only docs and has no enclosing repo
+  # either — makes git exit 128. Under the callers' `set -o pipefail` that
+  # status survives the awk pipe and aborts the whole sync, so check first and
+  # report no worktrees instead. (ibus-wp does not hit this: git there resolves
+  # to the enclosing sbs-db-wp-env repo, which is why it only ever produced a
+  # stale route rather than a failure.)
+  git -C "$repo_path" rev-parse --git-dir >/dev/null 2>&1 || return 0
   git -C "$repo_path" worktree list --porcelain 2>/dev/null | awk -v main="$repo_path" '
     /^worktree / { path = substr($0, 10) }
     /^prunable/  { prunable = 1 }
@@ -34,6 +42,21 @@ get_worktrees() {
       path = ""; prunable = 0
     }
   '
+}
+
+# The repo's primary checkout — the first entry `worktree list` prints. Callers
+# use it as the source to copy env files from and as the ports.conf lookup key.
+#
+# Guarded like get_worktrees: for a registered path that is not a repo, git
+# exits 128, and under the callers' `set -o pipefail` a bare `$(git ... | awk)`
+# assignment propagates that and aborts the sync. Empty output already means
+# "nothing to do" at every call site, so failure collapses into that.
+git_main_worktree() {
+  local repo="$1"
+  [ -d "$repo" ] || return 0
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  git -C "$repo" worktree list --porcelain 2>/dev/null \
+    | awk '/^worktree / { print substr($0, 10); exit }'
 }
 
 # Get worktree branch name from its path
@@ -82,6 +105,23 @@ slugify_worktree() {
   echo "$slug" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed 's/^-//;s/-$//'
 }
 
+# Host for a worktree of a project: "<slug>.<domain>.test".
+#
+# The slug is the SUBDOMAIN, not the other way round (the scheme used to be
+# "<domain>.<slug>.test"). That ordering is what makes a single wildcard cover
+# every worktree: one "https://*.hopninj.test" entry in an Entra app manifest
+# stands in for every branch, present and future, instead of a fresh redirect
+# URI registered by hand each time a worktree appears. dnsmasq already resolves
+# all of *.test to 127.0.0.1, so the extra label costs nothing there.
+#
+# Keycloak can't take the same wildcard — it only honours a trailing "*" and
+# ignores the hostname entirely — so its clients are kept in step by
+# sync_keycloak below instead.
+worktree_domain() {
+  local domain="$1" wt_slug="$2"
+  echo "${wt_slug}.${domain}.test"
+}
+
 # Look up project config from ports.conf: returns "domain:app_port:slot"
 get_project_config() {
   local repo="$1"
@@ -107,7 +147,7 @@ sync_env() {
   [ -d "$repo" ] || return 0
 
   local main_wt
-  main_wt=$(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '/^worktree / { print substr($0, 10); exit }')
+  main_wt=$(git_main_worktree "$repo")
   [ -n "$main_wt" ] || return 0
 
   local files_to_copy=()
@@ -439,6 +479,20 @@ generate_env_worktree() {
       echo "SERVER_PORT=$wt_app_port"
       echo "ASPNETCORE_URLS=http://localhost:$wt_app_port"
     fi
+    # APP_BASE_URL → this worktree's own host. Spring reads it as the root of
+    # every link the app hands out (OTP mails, payment redirects), and the
+    # application.yml default is the MAIN domain — so an unset worktree mails
+    # out links that quietly land on the main checkout's app and its database.
+    # Guarded on the repo actually reading the variable, like the probes below.
+    local app_yml
+    for app_yml in "$wt_path"/src/main/resources/application*.yml; do
+      [ -f "$app_yml" ] || continue
+      if grep -q 'APP_BASE_URL' "$app_yml"; then
+        echo "APP_BASE_URL=https://$(worktree_domain "$domain" "$wt_slug")"
+        break
+      fi
+    done
+
     # S3/MinIO + mail: apply the same offset the compose override uses, so the
     # app driver reaches THIS worktree's containers instead of the base ones.
     # Guarded so non-MinIO/non-mail projects stay unaffected.
@@ -497,7 +551,7 @@ generate_env_worktree() {
   if [ -n "$wt_app_port" ] && [ -f "$env_local" ]; then
     # NEXTAUTH_URL → this UI repo's domain
     if grep -q "^NEXTAUTH_URL=" "$env_local"; then
-      sed -i '' "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=https://${domain}.${wt_slug}.test|" "$env_local"
+      sed -i '' "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=https://$(worktree_domain "$domain" "$wt_slug")|" "$env_local"
     fi
 
     # NEXT_PUBLIC_BACKEND_API_URL → paired API repo's domain (sibling worktree dir)
@@ -505,7 +559,7 @@ generate_env_worktree() {
       local api_domain
       api_domain=$(find_sibling_domain "$wt_path")
       if [ -n "$api_domain" ]; then
-        sed -i '' "s|^NEXT_PUBLIC_BACKEND_API_URL=.*|NEXT_PUBLIC_BACKEND_API_URL=\"https://${api_domain}.${wt_slug}.test\"|" "$env_local"
+        sed -i '' "s|^NEXT_PUBLIC_BACKEND_API_URL=.*|NEXT_PUBLIC_BACKEND_API_URL=\"https://$(worktree_domain "$api_domain" "$wt_slug")\"|" "$env_local"
       fi
     fi
   fi
@@ -527,7 +581,7 @@ find_sibling_domain() {
 
     # Resolve the sibling worktree to its primary checkout for ports.conf lookup
     local sibling_main
-    sibling_main=$(git -C "$sibling" worktree list --porcelain 2>/dev/null | awk '/^worktree / { print substr($0, 10); exit }')
+    sibling_main=$(git_main_worktree "$sibling")
     [ -n "$sibling_main" ] || continue
 
     local config
@@ -588,7 +642,7 @@ sync_docker() {
   IFS=: read -r domain app_port slot <<< "$config"
 
   local main_wt
-  main_wt=$(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '/^worktree / { print substr($0, 10); exit }')
+  main_wt=$(git_main_worktree "$repo")
   [ -n "$main_wt" ] || return 0
 
   local worktrees
@@ -660,7 +714,7 @@ collect_domain_mappings() {
         wt_slug=$(slugify_branch "$branch")
         offset=$(port_offset "$slot" "$wt_index")
         wt_app_port=$((app_port + offset))
-        echo "${domain}.${wt_slug}.test:${wt_app_port}"
+        echo "$(worktree_domain "$domain" "$wt_slug"):${wt_app_port}"
       fi
     done <<< "$worktrees"
   done
@@ -798,6 +852,10 @@ sync_caddy() {
     return 0
   fi
 
+  # Stashed for sync_keycloak, which needs the same host list and has no reason
+  # to walk every repo's worktrees a second time to rebuild it.
+  IOSEFIN_DOMAIN_MAPPINGS="$mappings"
+
   generate_caddyfile "$mappings"
   update_etc_hosts "$mappings"
   reload_caddy
@@ -809,4 +867,164 @@ sync_caddy() {
     [ -z "$domain" ] && continue
     printf "    %-40s → localhost:%s\n" "$domain" "$port"
   done <<< "$mappings"
+
+  # Every worktree of a project lives under the project's own domain, so one
+  # wildcard per project covers all of them. Printed as a reminder of what to
+  # register in an external IdP (Entra app manifest) — a one-time step per
+  # project rather than one per branch.
+  local wildcards
+  wildcards=$(while IFS=: read -r host _port; do
+    [ -z "$host" ] && continue
+    [[ "$host" == *.*.test ]] || continue
+    echo "https://*.${host#*.}"
+  done <<< "$mappings" | sort -u)
+  if [ -n "$wildcards" ]; then
+    echo ""
+    echo "  IdP wildcards (register once per project, then never again):"
+    while IFS= read -r w; do
+      [ -n "$w" ] && printf "    %s\n" "$w"
+    done <<< "$wildcards"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Keycloak
+# ---------------------------------------------------------------------------
+
+# Keep the local Keycloak's clients in step with the worktree domains.
+#
+# Keycloak cannot do what Entra does with "https://*.hopninj.test": it honours
+# only a trailing "*", and since 26.6.3 the wildcard is not applied to the
+# hostname at all, so no single entry can stand for "every worktree of this
+# project". The local Keycloak is ours, though, so instead of registering URIs
+# by hand we push them: for every client that already lists a "<domain>.test"
+# redirect URI, the same URI is added once per live worktree host, and hosts
+# from worktrees that are gone (or from the old "<domain>.<slug>.test" scheme)
+# are dropped. Clients with no redirect URIs at all are left untouched.
+#
+# Writes through the admin REST API, so it lands in the DB and survives
+# restarts; realm JSON under infra/keycloak/realms is only read on first import
+# and is deliberately not rewritten here.
+sync_keycloak() {
+  [ "${IOSEFIN_SKIP_KEYCLOAK:-0}" = "1" ] && return 0
+
+  echo ""
+  echo "Syncing Keycloak redirect URIs..."
+
+  if ! command -v jq &>/dev/null; then
+    echo "  jq not found — skipping"
+    return 0
+  fi
+
+  local mappings="${IOSEFIN_DOMAIN_MAPPINGS:-}"
+  if [ -z "$mappings" ]; then
+    echo "  No domain mappings — skipping"
+    return 0
+  fi
+
+  # domain -> worktree hosts, derived from the mapping list rather than from
+  # git: a host is a worktree of <domain> when it ends in ".<domain>.test".
+  local domains map_lines=""
+  domains=$(awk -F: '!/^[[:space:]]*#/ && NF >= 4 { print $2 }' "$PORTS_CONF")
+  local host _port d
+  while IFS=: read -r host _port; do
+    [ -z "$host" ] && continue
+    for d in $domains; do
+      [[ "$host" == *".${d}.test" ]] && map_lines+="${d} ${host}"$'\n'
+    done
+  done <<< "$mappings"
+
+  if [ -z "$map_lines" ]; then
+    echo "  No worktree domains — nothing to register"
+    return 0
+  fi
+
+  local map_json
+  map_json=$(printf '%s' "$map_lines" | jq -R -s '
+    split("\n") | map(select(length > 0) | split(" "))
+    | group_by(.[0]) | map({key: .[0][0], value: map(.[1])}) | from_entries')
+
+  # Reach Keycloak however it is up: the Caddy host it advertises as
+  # KC_HOSTNAME first, the container's published port as a fallback.
+  local kc_base="" candidate
+  for candidate in "${KEYCLOAK_ADMIN_URL:-}" "https://auth.test" "http://localhost:8089"; do
+    [ -n "$candidate" ] || continue
+    if curl -sf -o /dev/null --max-time 5 "$candidate/realms/master/.well-known/openid-configuration" 2>/dev/null; then
+      kc_base="$candidate"
+      break
+    fi
+  done
+  if [ -z "$kc_base" ]; then
+    echo "  Keycloak not reachable — skipping (start infra's keycloak and re-run)"
+    return 0
+  fi
+
+  local token
+  token=$(curl -sf --max-time 10 -X POST "$kc_base/realms/master/protocol/openid-connect/token" \
+    -d grant_type=password -d client_id=admin-cli \
+    -d "username=${KEYCLOAK_ADMIN_USER:-admin}" \
+    -d "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}" 2>/dev/null | jq -r '.access_token // empty') || true
+  if [ -z "$token" ]; then
+    echo "  Could not authenticate against $kc_base — skipping"
+    return 0
+  fi
+
+  # Drops every host this script manages, then re-derives them from the
+  # surviving "<domain>.test" entries. Applied to redirectUris and webOrigins
+  # alike; entries that aren't URLs (native app schemes, the bare "+") fail to
+  # parse, are treated as unmanaged, and pass through untouched.
+  local jq_prog='
+    def parse: capture("^(?<scheme>[a-z][a-z0-9+.-]*)://(?<host>[^/?#]*)(?<rest>.*)$"; "i");
+    def managed($h):
+      any($map | keys[]; . as $d
+        | ($h | endswith("." + $d + ".test"))
+          or (($h | startswith($d + ".")) and ($h | endswith(".test")) and ($h != $d + ".test")));
+    def expand:
+      [ .[] | select(managed((((. | parse) | .host) // "")) | not) ] as $keep
+      | ($keep + [ $keep[] as $u
+                   | ($u | parse) as $p
+                   | ($map | to_entries[]) as $e
+                   | select($p.host == ($e.key + ".test"))
+                   | $e.value[] as $w
+                   | $p.scheme + "://" + $w + $p.rest ])
+      | unique;
+    .redirectUris = ((.redirectUris // []) | expand)
+    | .webOrigins = ((.webOrigins // []) | expand)'
+
+  local realms realm clients count i client updated client_id client_name changed=0
+  realms=$(curl -sf --max-time 10 -H "Authorization: Bearer $token" "$kc_base/admin/realms" 2>/dev/null \
+    | jq -r '.[].realm' 2>/dev/null) || true
+  [ -n "$realms" ] || { echo "  Could not list realms — skipping"; return 0; }
+
+  for realm in $realms; do
+    clients=$(curl -sf --max-time 10 -H "Authorization: Bearer $token" \
+      "$kc_base/admin/realms/$realm/clients" 2>/dev/null) || continue
+    [ -n "$clients" ] || continue
+    count=$(jq 'length' <<< "$clients" 2>/dev/null) || continue
+
+    for ((i = 0; i < count; i++)); do
+      client=$(jq -c ".[$i]" <<< "$clients")
+      # Only clients that already declare redirect URIs opt in.
+      [ "$(jq -r '(.redirectUris // []) | length' <<< "$client")" -gt 0 ] || continue
+
+      updated=$(jq -c --argjson map "$map_json" "$jq_prog" <<< "$client")
+      if [ "$(jq -cS '{redirectUris, webOrigins}' <<< "$client")" = "$(jq -cS '{redirectUris, webOrigins}' <<< "$updated")" ]; then
+        continue
+      fi
+
+      client_id=$(jq -r '.id' <<< "$client")
+      client_name=$(jq -r '.clientId' <<< "$client")
+      if curl -sf --max-time 10 -X PUT \
+        -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+        -d "$updated" "$kc_base/admin/realms/$realm/clients/$client_id" >/dev/null 2>&1; then
+        echo "  ${realm}/${client_name}: $(jq -r '.redirectUris | length' <<< "$updated") redirect URIs"
+        changed=$((changed + 1))
+      else
+        echo "  ${realm}/${client_name}: update FAILED" >&2
+      fi
+    done
+  done
+
+  [ "$changed" -eq 0 ] && echo "  Already up to date"
+  return 0
 }

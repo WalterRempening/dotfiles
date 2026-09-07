@@ -1,33 +1,34 @@
 #!/usr/bin/env bash
-# iosefin-sync-worktrees.sh — Sync all tmux sessions, worktrees, env, docker, and domains
-# Usage: Run from inside any tmux session
+# iosefin-sync-worktrees.sh — Sync all worktrees, env, docker, domains, and (in tmux) windows
+# Usage: Run from anywhere. Inside tmux it also creates the worktree windows.
 #
-# Iterates ALL known sessions, creates windows for worktrees, copies env files,
-# generates docker-compose overrides, copies databases, and updates Caddy + /etc/hosts.
+# Iterates ALL known sessions, copies env files, generates docker-compose
+# overrides, copies databases, and updates Caddy + /etc/hosts.
+#
+# Window creation is the ONLY part that needs tmux, and it is optional: outside
+# tmux the script skips it and does everything else. That keeps the command
+# idempotent — a sync run from any shell still refreshes ports, env, docker
+# and domains instead of aborting on a multiplexer it does not need.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/iosefin-lib.sh"
 
-# Must be inside tmux
-if [ -z "${TMUX:-}" ]; then
-  echo "Error: not inside a tmux session." >&2
-  exit 1
+# Windows are a tmux-only concern. Everything else below runs either way.
+IN_TMUX=0
+if [ -n "${TMUX:-}" ]; then
+  IN_TMUX=1
+  # Respect tmux base-index settings
+  P0=$(tmux show-options -gv pane-base-index 2>/dev/null || echo 0)
+  P1=$((P0 + 1))
+  P2=$((P0 + 2))
 fi
-
-# Respect tmux base-index settings
-P0=$(tmux show-options -gv pane-base-index 2>/dev/null || echo 0)
-P1=$((P0 + 1))
-P2=$((P0 + 2))
-
-# Current session (used for active tmux sessions list)
-CURRENT_SESSION=$(tmux display-message -p '#{session_name}')
 
 # ---------------------------------------------------------------------------
 # Session definitions: session_name → mode + repos
 # ---------------------------------------------------------------------------
-ALL_SESSIONS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra TikjetGo)
+ALL_SESSIONS=(Buakfieren Hopninj Skola Sbs Senova Unecre Kassa Infra Chopin TikjetGo SubastasFroes CocinasDyck)
 
 get_session_config() {
   local session="$1"
@@ -40,7 +41,15 @@ get_session_config() {
     Unecre)     echo "dual:$BASE/unecre/web_point_of_sale:$BASE/unecre/api_point_of_sale" ;;
     Kassa)      echo "auto:$BASE/kassa" ;;
     Infra)      echo "auto:$BASE/infra" ;;
+    Chopin)     echo "single:$BASE/chopin/chopin-app" ;;
     TikjetGo)   echo "auto:$BASE/tikjetgo" ;;
+    SubastasFroes) echo "single:$BASE/subastas-froes/ausruf-app" ;;
+    # erp-app is a reservation: the directory holds only docs, with no repo in
+    # it and none enclosing it, so get_worktrees finds nothing and the env,
+    # docker and port passes all no-op. Only the main cocinas.test route from
+    # ports.conf appears, pointing at a port nothing serves yet. Same shape as
+    # the ibus-wp note in ports.conf, and it resolves itself once the repo lands.
+    CocinasDyck)   echo "single:$BASE/cocinas-dyck/erp-app" ;;
     *)          echo "" ;;
   esac
 }
@@ -163,7 +172,11 @@ sync_windows_dual() {
 # Main
 # ---------------------------------------------------------------------------
 
-echo "Syncing all sessions..."
+if [ "$IN_TMUX" -eq 1 ]; then
+  echo "Syncing all sessions..."
+else
+  echo "Syncing all sessions (no tmux — windows skipped)..."
+fi
 
 ALL_REPOS=()
 
@@ -186,8 +199,8 @@ for session_name in "${ALL_SESSIONS[@]}"; do
   # Collect all repos for env + docker sync
   ALL_REPOS+=("${REPOS[@]}")
 
-  # Create tmux windows (only if the session exists)
-  if tmux_session_exists "$session_name"; then
+  # Create tmux windows (only when running inside tmux, and the session exists)
+  if [ "$IN_TMUX" -eq 1 ] && tmux_session_exists "$session_name"; then
     SESSION="$session_name"
     echo "Session: $session_name ($mode)"
 
@@ -201,7 +214,7 @@ for session_name in "${ALL_SESSIONS[@]}"; do
         sync_windows_dual "${REPOS[0]}" "${REPOS[1]}"
         ;;
     esac
-  else
+  elif [ "$IN_TMUX" -eq 1 ]; then
     echo "Session: $session_name — not running, skipping windows"
   fi
 
@@ -226,5 +239,9 @@ done
 
 # Sync Caddy reverse proxy + /etc/hosts (scans ALL projects)
 sync_caddy
+
+# Register the worktree domains with the local Keycloak. Must follow sync_caddy:
+# it reuses the host list that call builds.
+sync_keycloak
 
 echo "Done."

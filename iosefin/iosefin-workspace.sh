@@ -23,7 +23,8 @@ SELECTED_PROJECT=""
 usage() {
   cat <<EOF
 Usage: iosefin up [options]
-  -p, --project NAME   Start only the named project (case-insensitive).
+  -p, -t, --project NAME
+                       Start only the named project (case-insensitive).
                        Bypasses the default-exclusion list.
   -h, --help           Show this help.
 
@@ -38,7 +39,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -p|--project)
+    -p|-t|--project)
       SELECTED_PROJECT="${2:-}"
       [ -z "$SELECTED_PROJECT" ] && { usage >&2; exit 1; }
       shift 2

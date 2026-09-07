@@ -1,30 +1,37 @@
+# ---------------------------------------------------------------------------
+# PATH
+# ---------------------------------------------------------------------------
+# Every line PREPENDS, so the LAST one wins. This order is load-bearing: it is
+# the original order, and shuffling it changes which binary resolves first.
+
 export PATH="/usr/local/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
-# Added by Antigravity
-export PATH="/Users/wrd/.antigravity/antigravity/bin:$PATH"
-export PULUMI_CONFIG_PASSPHRASE="w@LT3r@HOME"
-export PATH="$HOME/.config/emacs/bin:$PATH"
+export PATH="$HOME/.antigravity/antigravity/bin:$PATH"          # Added by Antigravity
+export PATH="$HOME/.config/emacs/bin:$PATH"                     # Doom Emacs
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
 
 # OrbStack Docker socket
-export DOCKER_HOST="unix:///Users/wrd/.orbstack/run/docker.sock"
-alias vim="nvim"
-alias vi="nvim"
-alias vil="nvim -c Flog"
-alias vilu="nvim -c 'Flog -auto-update'"
-alias vif="nvim -c DiffviewOpen"
-alias dbui="nvim -c DBUI"
-alias ls="eza --icons=auto -1"
-alias ll="eza --long --all --icons=auto"
-alias lt="eza --tree --icons=auto"
-alias lgit="lazygit"
-alias vemacs="emacs --init-directory=$HOME/.emacs-vanilla"  # vanilla Emacs, leaves Doom untouched
-alias ldock="lazydocker"
-alias jira="jiratui ui"
+export DOCKER_HOST="unix://$HOME/.orbstack/run/docker.sock"
+
+# TODO: read this from the keychain rather than keeping it in the file:
+#   security add-generic-password -a "$USER" -s pulumi-config-passphrase -w -U
+#   export PULUMI_CONFIG_PASSPHRASE="$(security find-generic-password -a "$USER" -s pulumi-config-passphrase -w)"
+export PULUMI_CONFIG_PASSPHRASE="w@LT3r@HOME"
+
+# ---------------------------------------------------------------------------
+# Prompt & runtime managers
+# ---------------------------------------------------------------------------
 
 eval "$(starship init zsh)"
 eval "$(mise activate zsh)"
 
-# history setup
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+
 HISTFILE=$HOME/.zhistory
 SAVEHIST=1000
 HISTSIZE=999
@@ -34,75 +41,67 @@ setopt hist_expire_dups_first
 setopt hist_ignore_dups
 setopt hist_verify
 
-# completion using arrow keys (based on history)
-bindkey '^[[A' history-search-backward
-bindkey '^[[B' history-search-forward
+# ---------------------------------------------------------------------------
+# Completion
+# ---------------------------------------------------------------------------
+# compinit has to run before anything that registers completions.
 
-# Set up fzf key bindings and fuzzy completion
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}' 'm:{a-zA-Z}={A-Za-z}'
-# Enable interactive menu selection for completions
-zstyle ':completion:*' menu select=2
-# Enable case-insensitive globbing (e.g., ls *.TXT)
-setopt nocaseglob
+zstyle ':completion:*' menu select=2      # interactive menu selection
+setopt nocaseglob                         # case-insensitive globbing (ls *.TXT)
+
 autoload -U compinit; compinit
-source <(fzf --zsh)
+
+# ---------------------------------------------------------------------------
+# Plugins
+# ---------------------------------------------------------------------------
+# zsh-syntax-highlighting wraps every widget bound before it, so it MUST stay
+# last in this block.
+
+source <(fzf --zsh)                       # fzf key bindings + fuzzy completion
 source ~/.fzf-tab/fzf-tab.plugin.zsh
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-eval "$(ccmux completion zsh)"
+
 # fzf-tab preview for cd (show directory contents)
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza --icons=always -1 --color=always $realpath'
 
-# bun completions
-[ -s "/Users/wrd/.bun/_bun" ] && source "/Users/wrd/.bun/_bun"
+# ---------------------------------------------------------------------------
+# Keybindings
+# ---------------------------------------------------------------------------
 
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-eval "$(direnv hook zsh)"
-export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
-export PATH="/Library/TeX/texbin:$PATH"
+# Arrow keys search history by what is already typed
+bindkey '^[[A' history-search-backward
+bindkey '^[[B' history-search-forward
 
-# WakaTime terminal tracking
-# Sends heartbeat on each command, using tmux session as project name
-_wakatime_heartbeat() {
-  # Only track if wakatime-cli exists
-  [[ -x "$HOME/.wakatime/wakatime-cli" ]] || return
+# ---------------------------------------------------------------------------
+# Aliases
+# ---------------------------------------------------------------------------
 
-  local project="Terminal"
-  local entity="zsh"
+# editors
+alias vim="nvim"
+alias vi="nvim"
+alias vil="nvim -c Flog"
+alias vilu="nvim -c 'Flog -auto-update'"
+alias vif="nvim -c DiffviewOpen"
+alias dbui="nvim -c DBUI"
+alias vemacs="emacs --init-directory=$HOME/.emacs-vanilla"  # vanilla Emacs, leaves Doom untouched
 
-  # Use tmux session name as project if inside tmux
-  if [[ -n "$TMUX" ]]; then
-    project=$(tmux display-message -p '#S' 2>/dev/null || echo "Terminal")
-  fi
+# listing
+alias ls="eza --icons=auto -1"
+alias ll="eza --long --all --icons=auto"
+alias lt="eza --tree --icons=auto"
 
-  # Detect current foreground process for better categorization
-  local cmd="${1%% *}"  # First word of command
-  case "$cmd" in
-    claude)   entity="claude-code" ;;
-    opencode) entity="opencode" ;;
-    nvim|vim) entity="neovim" ;;
-    git|lgit) entity="git" ;;
-    lazygit)  entity="git" ;;
-    docker|lazydocker) entity="docker" ;;
-    *)        entity="terminal" ;;
-  esac
+# TUIs
+alias lgit="lazygit"
+alias ldock="lazydocker"
+alias jira="jiratui ui"
 
-  # Send heartbeat in background (non-blocking)
-  "$HOME/.wakatime/wakatime-cli" --write \
-    --plugin "zsh-wakatime/1.0.0" \
-    --entity-type app \
-    --entity "$entity" \
-    --project "$project" \
-    --language "Shell" \
-    &>/dev/null &!
-}
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
 
-# Hook into preexec (runs before each command)
-autoload -Uz add-zsh-hook
-add-zsh-hook preexec _wakatime_heartbeat
-
+# Restore a dump into the local Skola/Hopninj database.
 skolaHopninjDb() {
   local file=""
   while [[ $# -gt 0 ]]; do
@@ -165,13 +164,26 @@ gitlab-apply-defaults() {
   esac
 }
 
-# pnpm
-export PNPM_HOME="/Users/wrd/Library/pnpm"
+# ---------------------------------------------------------------------------
+# Late PATH entries
+# ---------------------------------------------------------------------------
+# These stay AFTER `mise activate` on purpose: they were originally sourced
+# later, so they prepend in front of mise's shims. Moving them into the block
+# at the top would let mise win instead.
+
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"        # bun completions
+
+export PATH="/opt/homebrew/opt/libpq/bin:$PATH"                 # psql, pg_restore
+export PATH="/Library/TeX/texbin:$PATH"
+
+export PNPM_HOME="$HOME/Library/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME/bin:"*) ;;
   *) export PATH="$PNPM_HOME/bin:$PATH" ;;
 esac
-# pnpm end
 
-# Added by Antigravity IDE
-export PATH="/Users/wrd/.antigravity-ide/antigravity-ide/bin:$PATH"
+export PATH="$HOME/.antigravity-ide/antigravity-ide/bin:$PATH"  # Added by Antigravity IDE
+
+eval "$(direnv hook zsh)"

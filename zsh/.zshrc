@@ -84,6 +84,10 @@ alias vi="nvim"
 alias vil="nvim -c Flog"
 alias vilu="nvim -c 'Flog -auto-update'"
 alias vif="nvim -c DiffviewOpen"
+# gitlab.nvim without opening nvim first: vmr picks which MR to review, vmrb
+# opens the one for the branch you are already on.
+alias vmr="nvim -c 'lua require(\"gitlab\").choose_merge_request()'"
+alias vmrb="nvim -c 'lua require(\"gitlab\").review()'"
 alias dbui="nvim -c DBUI"
 alias vemacs="emacs --init-directory=$HOME/.emacs-vanilla"  # vanilla Emacs, leaves Doom untouched
 
@@ -96,6 +100,14 @@ alias lt="eza --tree --icons=auto"
 alias lgit="lazygit"
 alias ldock="lazydocker"
 alias jira="jiratui ui"
+alias lgb="glab-tui"
+
+# Remote hosts. mosh resolves the host through ~/.ssh/config (HostName + User),
+# and survives sleep/roaming between networks the way plain ssh does not.
+alias t14="mosh t14 -- tmux new -A -s main"
+# mosh does not pass OSC 52 through, so copying out of the remote tmux
+# silently fails. Use the ssh variant when you need the clipboard.
+alias t14s="ssh -t t14 tmux new -A -s main"
 
 # ---------------------------------------------------------------------------
 # Functions

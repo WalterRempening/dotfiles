@@ -18,6 +18,11 @@ set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Name of the persistent tmux session. The `t14` / `t14s` aliases on the laptop
+# attach to this exact name, so the two must agree. Deliberately not the
+# hostname (wrd-server) and not "main", which reads as a git branch.
+TMUX_SESSION="${TMUX_SESSION:-t14}"
+
 info()  { printf '\033[1;34m[info]\033[0m  %s\n' "$*"; }
 ok()    { printf '\033[1;32m[ok]\033[0m    %s\n' "$*"; }
 warn()  { printf '\033[1;33m[warn]\033[0m  %s\n' "$*"; }
@@ -263,10 +268,10 @@ fi
 # ── 10. Stow dotfiles ────────────────────────
 info "Stowing dotfiles..."
 
-STOW_PACKAGES=(zsh-wsl git starship tmux nvim mise)
+STOW_PACKAGES=(zsh-wsl git starship tmux tmux-wsl nvim mise)
 
 # Back up any existing non-symlink configs that would conflict
-BACKUP_FILES=(.zshrc .zprofile .gitconfig .tmux.conf .config/mise/config.toml .config/starship.toml .config/starship/config.toml)
+BACKUP_FILES=(.zshrc .zprofile .gitconfig .tmux.conf .tmux.local.conf .config/mise/config.toml .config/starship.toml .config/starship/config.toml)
 for f in "${BACKUP_FILES[@]}"; do
   if [ -f "$HOME/$f" ] && [ ! -L "$HOME/$f" ]; then
     warn "Backing up existing ~/$f to ~/${f}.bak"
@@ -285,8 +290,8 @@ done
 ok "All packages stowed"
 
 # ── 11. Persistent tmux session (headless) ───
-# Keeps session `main` alive across reboots so `mosh <host> -- tmux new -A -s
-# main` always lands somewhere. enable-linger is what starts it at boot rather
+# Keeps the session alive across reboots so `tmux new -A -s $TMUX_SESSION`
+# always lands somewhere. enable-linger is what starts it at boot rather
 # than at first login.
 if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
   info "Setting up persistent tmux session..."
@@ -294,13 +299,13 @@ if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v systemctl &>/dev/null
   mkdir -p "$HOME/.config/systemd/user"
   cat > "$HOME/.config/systemd/user/tmux.service" <<UNIT
 [Unit]
-Description=persistent tmux session
+Description=persistent tmux session ($TMUX_SESSION)
 After=default.target
 
 [Service]
 Type=forking
-ExecStart=$(command -v tmux) new-session -d -s main
-ExecStop=$(command -v tmux) kill-session -t main
+ExecStart=$(command -v tmux) new-session -d -s $TMUX_SESSION
+ExecStop=$(command -v tmux) kill-session -t $TMUX_SESSION
 Restart=on-failure
 
 [Install]

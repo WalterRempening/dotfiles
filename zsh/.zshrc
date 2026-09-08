@@ -104,10 +104,10 @@ alias lgb="glab-tui"
 
 # Remote hosts. mosh resolves the host through ~/.ssh/config (HostName + User),
 # and survives sleep/roaming between networks the way plain ssh does not.
-alias t14="mosh t14 -- tmux new -A -s main"
+alias t14="mosh t14 -- tmux new -A -s t14"
 # mosh does not pass OSC 52 through, so copying out of the remote tmux
 # silently fails. Use the ssh variant when you need the clipboard.
-alias t14s="ssh -t t14 tmux new -A -s main"
+alias t14s="ssh -t t14 tmux new -A -s t14"
 
 # ---------------------------------------------------------------------------
 # Functions

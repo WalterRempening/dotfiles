@@ -1,0 +1,124 @@
+# ---------------------------------------------------------------------------
+# Linux-only starship config — the home server.
+#
+# Identical to starship/.config/starship.toml in every respect except colour:
+# same format string, modules, symbols, truncation and substitutions. Keep the
+# two in sync when you change structure; only the palette differs.
+#
+# Recoloured from tokyo-night to ristretto so the prompt matches the server's
+# tmux status bar (see tmux-wsl/.tmux.local.conf):
+#
+#   OS segment bg   #a3aed2 -> #e6d9db      git bg     #394260 -> #403e41
+#   OS segment fg   #090c0c -> #2c2525      lang bg    #212736 -> #3a383b
+#   accent          #769ff0 -> #f38d70      time bg    #1d2230 -> #2c2525
+#   directory fg    #e3e5e5 -> #2c2525      time fg    #a0a9cb -> #948a8b
+#
+# The accent is ristretto's coral, the same colour as the tmux session block.
+# ---------------------------------------------------------------------------
+
+format = """
+[░▒▓](#e6d9db)\
+[ $os ](bg:#e6d9db fg:#2c2525)\
+[](bg:#f38d70 fg:#e6d9db)\
+$directory\
+[](fg:#f38d70 bg:#403e41)\
+$git_branch\
+$git_status\
+${custom.git_tag}\
+[](fg:#403e41 bg:#3a383b)\
+$nodejs\
+$rust\
+$golang\
+$kotlin\
+$java\
+$php\
+$dotnet\
+[](fg:#3a383b bg:#2c2525)\
+$time\
+[ ](fg:#2c2525)\
+\n$character"""
+
+[os]
+disabled = false
+style = "bg:#e6d9db fg:#2c2525"
+
+[os.symbols]
+Ubuntu = ""
+Macos = ""
+Windows = "󰍲"
+
+[directory]
+style = "fg:#2c2525 bg:#f38d70"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+
+[git_branch]
+symbol = ""
+style = "bg:#403e41"
+format = '[[ $symbol $branch ](fg:#f38d70 bg:#403e41)]($style)'
+
+[git_status]
+style = "bg:#403e41"
+format = '[[($all_status$ahead_behind )](fg:#f38d70 bg:#403e41)]($style)'
+
+# Shows tag(s) pointing at the current HEAD, and nothing when HEAD has no tag.
+# Sits in the same #403e41 segment as git_branch/git_status (no extra separators).
+[custom.git_tag]
+description = "git tag(s) at HEAD"
+when = "git tag --points-at HEAD 2>/dev/null | grep -q ."
+command = "git tag --points-at HEAD 2>/dev/null | paste -sd ',' -"
+symbol = ""
+style = "bg:#403e41"
+format = '[[ $symbol $output ](fg:#f38d70 bg:#403e41)]($style)'
+shell = ["bash", "--noprofile", "--norc"]
+
+[nodejs]
+symbol = ""
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[rust]
+symbol = ""
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[golang]
+symbol = ""
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[java]
+symbol = " "
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[dotnet]
+symbol = '.NET'
+style = 'green'
+heuristic = false
+
+[docker_context]
+format = 'via [🐋 $context](blue bold)'
+
+[php]
+symbol = ""
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[kotlin]
+symbol = ' '
+style = "bg:#3a383b"
+format = '[[ $symbol ($version) ](fg:#f38d70 bg:#3a383b)]($style)'
+
+[time]
+disabled = false
+time_format = "%R" # Hour:Minute Format
+style = "bg:#2c2525"
+format = '[[  $time ](fg:#948a8b bg:#2c2525)]($style)'

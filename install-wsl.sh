@@ -268,7 +268,9 @@ fi
 # ── 10. Stow dotfiles ────────────────────────
 info "Stowing dotfiles..."
 
-STOW_PACKAGES=(zsh-wsl git starship tmux tmux-wsl nvim mise)
+# starship-wsl replaces starship, the way zsh-wsl replaces zsh: starship has no
+# include mechanism, so the Linux palette lives in a parallel file.
+STOW_PACKAGES=(zsh-wsl git starship-wsl tmux tmux-wsl nvim mise)
 
 # Back up any existing non-symlink configs that would conflict
 BACKUP_FILES=(.zshrc .zprofile .gitconfig .tmux.conf .tmux.local.conf .config/mise/config.toml .config/starship.toml .config/starship/config.toml)

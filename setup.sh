@@ -44,7 +44,7 @@ brew install git
 # ---------------------------------------------------------------------------
 step "Installing build dependencies"
 brew install cmake ninja gettext curl libtool automake pkg-config \
-  libevent ncurses bison utf8proc
+  libevent ncurses bison utf8proc jemalloc
 
 # ---------------------------------------------------------------------------
 # 4. Neovim from source (latest)
@@ -84,7 +84,9 @@ else
     cd "$TMUX_BUILD_DIR"
   fi
   sh autogen.sh
-  ./configure --enable-utf8proc
+  # tmux refuses to configure on macOS without an explicit allocator choice
+  # (macOS calloc(3) doesn't always zero allocations); jemalloc is upstream's pick.
+  ./configure --enable-utf8proc --enable-jemalloc
   make
   sudo make install
   cd "$DOTFILES_DIR"

@@ -125,50 +125,39 @@ docker run --rm --network host -e MC_HOST_local="http://${MINIO_USER}:${MINIO_PA
 # BucketLocation must be us-east-1: MinIO reports that region regardless.
 # ServerAddress is the bridge IP, not 127.0.0.1 — the cache archiver runs in a
 # helper CONTAINER, where localhost is the container itself.
+#
+# NB: `gitlab-runner register` already writes an empty [runners.cache] block
+# with .s3/.gcs/.azure sub-tables. It must be REPLACED, not appended to — two
+# [runners.cache] tables in one [[runners]] is a fatal TOML error
+# ("Key 'runners.cache' has already been defined") and the service crash-loops.
+sudo install -Dm 755 "$(dirname "$0")/ci-cache-config.py" /usr/local/lib/ci-cache-config.py
+
 CFG=/etc/gitlab-runner/config.toml
-if sudo grep -q 'Type = "s3"' "$CFG" 2>/dev/null; then
-  ok "runner cache already configured for s3"
+if sudo grep -q 'BucketName = "runner-cache"' "$CFG" 2>/dev/null; then
+  ok "runner cache already points at MinIO"
 else
-  info "Adding the shared cache to the docker runner..."
+  info "Pointing the docker runner at the shared cache..."
   sudo cp "$CFG" "${CFG}.bak"
-  sudo python3 - "$CFG" "$BRIDGE_IP" "$MINIO_USER" "$MINIO_PASS" <<'PY'
-import sys, re
-cfg, bridge, user, pw = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-src = open(cfg).read()
+  sudo python3 /usr/local/lib/ci-cache-config.py "$CFG" "$BRIDGE_IP" "$MINIO_USER" "$MINIO_PASS"
 
-block = f'''  [runners.cache]
-    Type = "s3"
-    Shared = true
-    [runners.cache.s3]
-      ServerAddress = "{bridge}:9000"
-      AccessKey = "{user}"
-      SecretKey = "{pw}"
-      BucketName = "runner-cache"
-      BucketLocation = "us-east-1"
-      Insecure = true
-'''
+  # Validate BEFORE restarting. A bad edit here crash-loops the service and
+  # takes every runner on this host offline.
+  if sudo python3 -c "import tomllib,sys; tomllib.load(open(sys.argv[1],'rb'))" "$CFG" 2>/dev/null; then
+    ok "config.toml is valid TOML"
+  else
+    sudo cp "${CFG}.bak" "$CFG"
+    error "edit produced invalid TOML — restored ${CFG}.bak, runner untouched"
+  fi
 
-lines = src.splitlines(keepends=True)
-out, in_docker_runner, done = [], False, False
-for line in lines:
-    if line.startswith('[[runners]]'):
-        in_docker_runner = False
-    if re.match(r'\s*name = ".*t14-docker.*"', line):
-        in_docker_runner = True
-    # Insert immediately before this runner's [runners.docker] sub-table.
-    if in_docker_runner and not done and line.strip() == '[runners.docker]':
-        out.append(block)
-        done = True
-    out.append(line)
-
-if not done:
-    sys.stderr.write("could not find the t14-docker [runners.docker] section\n")
-    sys.exit(1)
-open(cfg, 'w').write(''.join(out))
-print("inserted [runners.cache]")
-PY
   sudo gitlab-runner restart >/dev/null 2>&1 || sudo systemctl restart gitlab-runner
-  ok "runner restarted with the shared cache"
+  sleep 3
+  if [ "$(systemctl is-active gitlab-runner)" = "active" ]; then
+    ok "gitlab-runner restarted with the shared cache"
+  else
+    sudo cp "${CFG}.bak" "$CFG"
+    sudo systemctl restart gitlab-runner
+    error "runner did not come up — restored ${CFG}.bak and restarted"
+  fi
 fi
 
 # ── Done ─────────────────────────────────────

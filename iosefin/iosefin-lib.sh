@@ -138,6 +138,35 @@ port_offset() {
   echo $(( (slot * 3 + wt_index) * 100 ))
 }
 
+# Files sync writes into a worktree. None of them belongs in a commit.
+SYNC_GENERATED_FILES=(docker-compose.override.yml .env.worktree .envrc .iosefin-db-info .iosefin-db-copied)
+
+# Ignore sync's generated files through the repo's local exclude file instead of
+# the project's .gitignore. .git/info/exclude is never committed and is shared by
+# every worktree of the repo, so one entry covers them all and no tracked file
+# is modified.
+ensure_git_excluded() {
+  local wt="$1"
+  local common_dir
+  common_dir=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  [ -n "$common_dir" ] || return 0
+  local exclude="$common_dir/info/exclude"
+  mkdir -p "$common_dir/info"
+  touch "$exclude"
+  local pattern added=0
+  for pattern in "${SYNC_GENERATED_FILES[@]}"; do
+    if ! grep -qxF "$pattern" "$exclude"; then
+      if [ "$added" -eq 0 ] && ! grep -qF "# iosefin sync" "$exclude"; then
+        printf '\n# iosefin sync — generated per worktree\n' >> "$exclude"
+      fi
+      echo "$pattern" >> "$exclude"
+      added=1
+    fi
+  done
+  [ "$added" -eq 1 ] && echo "    $(basename "$wt"): ignored sync files in .git/info/exclude"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Env file sync
 # ---------------------------------------------------------------------------
@@ -430,7 +459,8 @@ copy_db_from_main() {
 # Generate .env.worktree with port overrides and ensure .envrc loads it
 # Host port a service publishes for a given container port, as the compose
 # file of that worktree declares it: a literal, or the default inside
-# ${VAR:-default}.
+# ${VAR:-default}. Only list items count, so a `command:` mentioning ":9001"
+# (MinIO's --console-address) is not mistaken for a port mapping.
 #
 # Exists because the offsets below used to be added to hardcoded bases (9010
 # MinIO, 1028 mail). Those are the ports skola-app publishes. sbs-api uses
@@ -444,7 +474,7 @@ _compose_host_port() {
   line=$(awk -v svc="$service" -v cp="$container_port" '
     $0 ~ "^[[:space:]]+" svc ":[[:space:]]*$" { in_svc = 1; next }
     in_svc && /^[[:space:]]{1,2}[a-zA-Z0-9_-]+:[[:space:]]*$/ { in_svc = 0 }
-    in_svc && $0 ~ ":" cp "\"?([[:space:]]|$|#)" { print; exit }
+    in_svc && /^[[:space:]]*- / && $0 ~ ":" cp "\"?([[:space:]]|$|#)" { print; exit }
   ' "$file")
   [ -n "$line" ] || return 1
   printf '%s\n' "$line" | sed -E \
@@ -514,6 +544,12 @@ generate_env_worktree() {
       minio_base=$(_compose_host_port "$wt_compose" minio 9000)
       if [ -n "$minio_base" ]; then
         echo "SKOLA_STORAGE_S3_ENDPOINT=http://localhost:$((minio_base + offset))"
+        # Generic names for projects that read the port rather than a full
+        # endpoint (ausruf-app: MINIO_PORT, MINIO_CONSOLE_PORT).
+        echo "MINIO_PORT=$((minio_base + offset))"
+        local minio_console_base
+        minio_console_base=$(_compose_host_port "$wt_compose" minio 9001)
+        [ -n "$minio_console_base" ] && echo "MINIO_CONSOLE_PORT=$((minio_console_base + offset))"
       else
         echo "    ${wt_slug}: could not read the minio host port from $(basename "$wt_compose")" >&2
       fi
@@ -625,6 +661,7 @@ sync_ports() {
     offset=$(port_offset "$slot" "$wt_index")
 
     generate_env_worktree "$wt" "$wt_slug" "$offset" "$app_port" "$domain"
+    ensure_git_excluded "$wt"
   done <<< "$worktrees"
 }
 
@@ -660,11 +697,7 @@ sync_docker() {
 
     echo "  Worktree: $wt_slug (offset +$offset)"
 
-    # Add docker-compose.override.yml to gitignore if not already there
-    if [ -f "$wt/.gitignore" ] && ! grep -qxF "docker-compose.override.yml" "$wt/.gitignore"; then
-      echo "docker-compose.override.yml" >> "$wt/.gitignore"
-      echo "    ${wt_slug}: added docker-compose.override.yml to .gitignore"
-    fi
+    ensure_git_excluded "$wt"
 
     # Generate override
     generate_compose_override "$wt" "$wt_slug" "$offset"

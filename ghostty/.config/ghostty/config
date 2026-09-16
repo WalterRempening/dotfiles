@@ -1,5 +1,4 @@
-title=""
-macos-titlebar-style=hidden
+macos-titlebar-style=tabs
 theme=Material Design Colors
 font-family="MesloLGM Nerd Font Mono"
 font-size=15

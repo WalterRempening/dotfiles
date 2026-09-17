@@ -92,6 +92,15 @@ slugify_branch() {
 # "$BASE/hopninj/skola-hopninj-app" yields "feat-closing" rather than the full
 # "skola-hopninj-app-feat-closing". Worktrees whose dir doesn't share the main
 # repo's prefix (e.g. "$BASE/hopninj/modularization") use the basename as-is.
+#
+# Paired projects put the feature in the PARENT directory and keep the repo's
+# own name: "$BASE/sbs/registration-check/sbs-api" beside main at
+# "$BASE/sbs/sbs-api". The basename is then the main repo's, so taking it would
+# hand every worktree the main checkout's slug -- and with it the same
+# container_names, volumes and COMPOSE_PROJECT_NAME. Only one of them can hold
+# a name, so whichever came up first kept it and the rest silently ran against
+# it (a worktree's mail landing in another's mailpit, on the port its .env no
+# longer used). The parent directory is what names the work, so use that.
 slugify_worktree() {
   local wt_path="$1" main_wt_path="$2"
   local wt_base main_base slug
@@ -99,6 +108,8 @@ slugify_worktree() {
   main_base=$(basename "$main_wt_path")
   if [ -n "$main_base" ] && [[ "$wt_base" == "${main_base}-"* ]]; then
     slug="${wt_base#${main_base}-}"
+  elif [ -n "$main_base" ] && [ "$wt_base" = "$main_base" ]; then
+    slug=$(basename "$(dirname "$wt_path")")
   else
     slug="$wt_base"
   fi

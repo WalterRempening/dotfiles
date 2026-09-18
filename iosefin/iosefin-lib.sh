@@ -479,15 +479,20 @@ copy_db_from_main() {
 # while its containers came up elsewhere — the app then dialled a port nothing
 # was listening on and every upload failed with "Connection refused". Reading
 # the number from the file keeps the two in step per repo.
+#
+# Not finding the port prints nothing and still succeeds: callers assign the
+# result under `set -e`, where a non-zero status aborts the whole sync before
+# it reaches Caddy and /etc/hosts. Empty output already means "not published"
+# at every call site (sbs-api's MinIO, for one, does not publish 9001).
 _compose_host_port() {
   local file="$1" service="$2" container_port="$3" line
-  [ -f "$file" ] || return 1
+  [ -f "$file" ] || return 0
   line=$(awk -v svc="$service" -v cp="$container_port" '
     $0 ~ "^[[:space:]]+" svc ":[[:space:]]*$" { in_svc = 1; next }
     in_svc && /^[[:space:]]{1,2}[a-zA-Z0-9_-]+:[[:space:]]*$/ { in_svc = 0 }
     in_svc && /^[[:space:]]*- / && $0 ~ ":" cp "\"?([[:space:]]|$|#)" { print; exit }
   ' "$file")
-  [ -n "$line" ] || return 1
+  [ -n "$line" ] || return 0
   printf '%s\n' "$line" | sed -E \
     -e 's/.*\$\{[A-Za-z_][A-Za-z0-9_]*:-([0-9]+)\}:.*/\1/' \
     -e 't' \
